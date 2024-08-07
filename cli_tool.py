@@ -4,20 +4,31 @@ import json
 import os
 import cmd
 
-API_BASE_URL = "https://127.0.0.1:8000"
+API_BASE_URL = "http://127.0.0.1:8000"
 SESSION_FILE = ".session_id"
 
 def load_session_id():
+    """
+    從文件中載入會話 ID。
+    如果文件存在，讀取並返回其內容；否則返回 None。
+    """
     if os.path.exists(SESSION_FILE):
         with open(SESSION_FILE, "r") as f:
             return f.read().strip()
     return None
 
 def save_session_id(session_id):
+    """
+    將會話 ID 保存到文件中。
+    """
     with open(SESSION_FILE, "w") as f:
         f.write(session_id)
 
 class ReportGeneratorShell(cmd.Cmd):
+    """
+    報告生成器的命令行界面class。
+    繼承自 cmd.Cmd，提供了一個交互式 shell 環境。
+    """
     intro = "Welcome to the Report Generator Shell. Type help or ? to list commands.\n"
     prompt = "(report) "
 

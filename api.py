@@ -24,6 +24,7 @@ class ReprocessContentRequest(BaseModel):
     command: str
     openai_config: Optional[Dict[str, Any]]
 
+# 定義 request model
 class ReportGenerator:
     def __init__(self):
         self.final_result = {}
@@ -37,6 +38,7 @@ class ReportGenerator:
         self.summary = akasha.Summary(chunk_size=1000, max_doc_len=7000)
 
     def generate_report(self, request: ReportRequest):
+        # 生成報告
         self.report_config["theme"] = request.theme
         self.report_config["titles"] = request.titles.copy()
         self.report_config["links"] = request.links.copy()
@@ -45,10 +47,12 @@ class ReportGenerator:
         result = {}
         contexts = []
 
+        # 遍歷每個標題和子標題
         for title, subtitle in request.titles.items():
             format_prompt = f"以{request.theme}為主題，請你總結撰寫出與\"{title}\"相關的內容，其中需包含{subtitle}，不需要結論，不需要回應要求。"
             for link in request.links:
                 try:
+                    # 獲取並解析鏈接內容
                     response = requests.get(link)
                     response.raise_for_status()
                     soup = BeautifulSoup(response.content, 'html.parser')
@@ -62,7 +66,7 @@ class ReportGenerator:
                         format_prompt=format_prompt,
                     )
                 )
-
+            # 使用 QA 模型生成內容
             response = QA.ask_self(
                 prompt=f"將此內容以客觀角度進行融合，避免使用\"報告中提到\"相關詞彙，避免修改專有名詞，避免做出總結，直接撰寫內容，避免回應要求。",
                 info=contexts,
@@ -70,7 +74,7 @@ class ReportGenerator:
             )
             result[title] = response
             contexts = []
-
+        # 生成內容摘要
         previous_result = ""
         for value in result.values():
             previous_result += value
@@ -84,6 +88,7 @@ class ReportGenerator:
         return self.final_result
 
     def check_result(self):
+         # 檢查報告是否已生成
         if not self.final_result:
             return False
         if not self.report_config["theme"]:
@@ -95,9 +100,11 @@ class ReportGenerator:
         return True
 
     def reprocess_content(self, request: ReprocessContentRequest):
+         # 重新處理內容
         if not self.final_result:
             raise HTTPException(status_code=400, detail="请先使用generate_report生成报告")
         if self.final_result != {}:
+            # 使用 QA 模型解析用戶的修改要求
             new_request= QA.ask_self(
                 prompt=f"""使用者輸入了以下修改要求:
                 ----------------
@@ -159,11 +166,12 @@ class ReportGenerator:
             )
 
             try:
+                # 解析修改請求
                 part = new_request.split("修改部分: ")[1].split("\n修改內容: ")[0]
                 mod_command = new_request.split("修改部分: ")[1].split("\n修改內容: ")[1]
                 if part in self.final_result:
                     previous_context = self.final_result[part]
-
+                    # 判斷是否需要重新爬取資料
                     modification = QA.ask_self(
                         prompt=f"""從以下修改要求和提供的內容判斷是否需要重新爬取資料。大部分情況需要加入新的資料進去時會，
                         需要爬取資料，此時需要回覆"y"。否則回覆"n"。若修改要求和提供的內容完全沒有關聯性或者無法判斷時，請回覆"unknown"。
@@ -197,7 +205,7 @@ class ReportGenerator:
                         info=previous_context,
                         model="openai:gpt-4"
                     )
-
+                    # 處理修改請求
                     while modification == "unknown":
                         modification = input("無法判斷是否需要重新爬取資料，請問是否需要從原文重新爬取資料? (y/n)\n")
                         if modification != "y" and modification != "n":
@@ -254,7 +262,7 @@ class ReportGenerator:
             "part": "..."
         }
 
-
+# 加載 OpenAI 配置的函數
 def load_openai(config: dict) -> bool:
     """delete old environment variable and load new one.
 
@@ -264,6 +272,7 @@ def load_openai(config: dict) -> bool:
     Returns:
         bool: load success or not
     """
+    # 刪除舊的環境變量
     if "OPENAI_API_KEY" in os.environ:
         del os.environ["OPENAI_API_KEY"]
     if "AZURE_API_BASE" in os.environ:
@@ -275,11 +284,13 @@ def load_openai(config: dict) -> bool:
     if "AZURE_API_VERSION" in os.environ:
         del os.environ["AZURE_API_VERSION"]
 
+    # 設置 OpenAI API 密鑰
     if "openai_key" in config and config["openai_key"] != "":
         os.environ["OPENAI_API_KEY"] = config["openai_key"]
 
         return True
 
+    # 設置 Azure API 配置
     if ("azure_key" in config and "azure_base" in config
             and config["azure_key"] != "" and config["azure_base"] != ""):
         os.environ["AZURE_API_KEY"] = config["azure_key"]
@@ -292,15 +303,18 @@ def load_openai(config: dict) -> bool:
 
 user_sessions: Dict[str, ReportGenerator] = {}
 
-def get_report_generator(session_id: str = Header(None)):
+# 獲取報告生成器的依賴函數
+def get_report_generator(session_id: str = Header(alias="session_id", default=None)):
     if session_id is None:
         session_id = str(uuid.uuid4())
     if session_id not in user_sessions:
         user_sessions[session_id] = ReportGenerator()
     return user_sessions[session_id], session_id
 
+# API 路由
 @app.post("/generate_report")
 async def generate_report(request: ReportRequest, session_data: tuple = Depends(get_report_generator)):
+    """生成報告的 API 端點"""
     generator, session_id = session_data
     result = generator.generate_report(request)
     return {"session_id": session_id, "result": result}
@@ -308,11 +322,13 @@ async def generate_report(request: ReportRequest, session_data: tuple = Depends(
 
 @app.get("/check_result")
 async def check_result(session_data: tuple = Depends(get_report_generator)):
+    """檢查報告結果的 API 端點"""
     generator, session_id = session_data
     return {"session_id": session_id, "result": generator.check_result()}
 
 @app.get("/get_report")
 async def get_report(session_data: tuple = Depends(get_report_generator)):
+    """獲取報告的 API 端點"""
     generator, session_id = session_data
     result = generator.final_result
     return {"session_id": session_id, "result": result}
@@ -320,6 +336,7 @@ async def get_report(session_data: tuple = Depends(get_report_generator)):
 
 @app.post("/reprocess_content")
 async def reprocess_content(request: ReprocessContentRequest, session_data: tuple = Depends(get_report_generator)):
+    """重新處理內容的 API 端點"""
     generator, session_id = session_data
     result = generator.reprocess_content(request)
     return {"session_id": session_id, "result": result}
@@ -327,4 +344,3 @@ async def reprocess_content(request: ReprocessContentRequest, session_data: tupl
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run(app, host="127.0.0.1", port=8000)
-    # print(final_result)
