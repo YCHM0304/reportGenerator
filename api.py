@@ -1,3 +1,4 @@
+from threading import local
 from fastapi import FastAPI, HTTPException, Depends, Header
 from pydantic import BaseModel
 from typing import Dict, List, Any, Optional
@@ -8,7 +9,6 @@ from bs4 import BeautifulSoup
 import uuid
 
 app = FastAPI()
-
 
 model = "openai:gpt-4o"
 QA = akasha.Doc_QA(model=model, max_doc_len=8000)
