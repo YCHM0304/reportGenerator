@@ -103,10 +103,10 @@ class ReportGeneratorShell(cmd.Cmd):
                 self.do_generate('')
             elif choice == 'check':
                 self.do_check('')
-                time.sleep(3)
+                time.sleep(1.5)
             elif choice == 'get':
                 self.do_get('')
-                time.sleep(3)
+                time.sleep(1.5)
             elif choice == 'reprocess':
                 self.do_reprocess(input("Enter command for reprocess: "))
             elif choice == 'help':
@@ -124,7 +124,7 @@ class ReportGeneratorShell(cmd.Cmd):
                 ]
                 answer = inquirer.prompt(questions)
                 self.do_help(answer["help_option"])
-                time.sleep(3)
+                time.sleep(1.5)
             elif choice == 'prompt':
                 self.prompt_mode()
             elif choice == 'exit':
