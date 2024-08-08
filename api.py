@@ -10,10 +10,6 @@ import uuid
 
 app = FastAPI()
 
-model = "openai:gpt-4o"
-QA = akasha.Doc_QA(model=model, max_doc_len=8000)
-summary = akasha.Summary(chunk_size=1000, max_doc_len=7000)
-
 class ReportRequest(BaseModel):
     theme: str
     titles: Dict[str, List[str]]
@@ -34,18 +30,49 @@ class ReportGenerator:
             "links": []
         }
         self.model = "openai:gpt-4"
-        self.QA = akasha.Doc_QA(model=self.model, max_doc_len=8000)
-        self.summary = akasha.Summary(chunk_size=1000, max_doc_len=7000)
+        self.openai_config = {}
+
+    def load_openai(self) -> bool:
+        # 刪除舊的環境變量
+        if "OPENAI_API_KEY" in os.environ:
+            del os.environ["OPENAI_API_KEY"]
+        if "AZURE_API_BASE" in os.environ:
+            del os.environ["AZURE_API_BASE"]
+        if "AZURE_API_KEY" in os.environ:
+            del os.environ["AZURE_API_KEY"]
+        if "AZURE_API_TYPE" in os.environ:
+            del os.environ["AZURE_API_TYPE"]
+        if "AZURE_API_VERSION" in os.environ:
+            del os.environ["AZURE_API_VERSION"]
+
+        # 設置 OpenAI API 密鑰
+        config = self.openai_config
+        if "openai_key" in config and config["openai_key"]:
+            os.environ["OPENAI_API_KEY"] = config["openai_key"]
+            return True
+        if "azure_key" in config and "azure_base" in config and config["azure_key"] and config["azure_base"]:
+            os.environ["AZURE_API_KEY"] = config["azure_key"]
+            os.environ["AZURE_API_BASE"] = config["azure_base"]
+            os.environ["AZURE_API_TYPE"] = "azure"
+            os.environ["AZURE_API_VERSION"] = "2023-05-15"
+            print("Azure API Key: ", os.environ["AZURE_API_KEY"])
+            print("Azure API Base: ", os.environ["AZURE_API_BASE"])
+            return True
+        return False
 
     def generate_report(self, request: ReportRequest):
         # 生成報告
         self.report_config["theme"] = request.theme
         self.report_config["titles"] = request.titles.copy()
         self.report_config["links"] = request.links.copy()
-        if not load_openai(config=request.openai_config):
+        self.openai_config = request.openai_config or {}
+
+        if not self.load_openai():
             raise HTTPException(status_code=400, detail="請提供OpenAI或Azure的API金鑰")
         result = {}
         contexts = []
+        self.QA = akasha.Doc_QA(model=self.model, max_doc_len=8000)
+        self.summary = akasha.Summary(chunk_size=1000, max_doc_len=7000)
 
         # 遍歷每個標題和子標題
         for title, subtitle in request.titles.items():
@@ -61,13 +88,13 @@ class ReportGenerator:
                     raise HTTPException(status_code=400, detail=f"Error fetching content: {str(e)}")
 
                 contexts.append(
-                    summary.summarize_articles(
+                    self.summary.summarize_articles(
                         articles=texts,
                         format_prompt=format_prompt,
                     )
                 )
             # 使用 QA 模型生成內容
-            response = QA.ask_self(
+            response = self.QA.ask_self(
                 prompt=f"將此內容以客觀角度進行融合，避免使用\"報告中提到\"相關詞彙，避免修改專有名詞，避免做出總結，直接撰寫內容，避免回應要求。",
                 info=contexts,
                 model="openai:gpt-4"
@@ -79,7 +106,7 @@ class ReportGenerator:
         for value in result.values():
             previous_result += value
 
-        result["內容摘要"] = summary.summarize_articles(
+        result["內容摘要"] = self.summary.summarize_articles(
             articles=previous_result,
             format_prompt=f"將內容以{request.theme}為主題進行摘要，將用字換句話說，意思不變，不需要結論，不需要回應要求。",
             summary_len=500
@@ -105,7 +132,7 @@ class ReportGenerator:
             raise HTTPException(status_code=400, detail="请先使用generate_report生成报告")
         if self.final_result != {}:
             # 使用 QA 模型解析用戶的修改要求
-            new_request= QA.ask_self(
+            new_request= self.QA.ask_self(
                 prompt=f"""使用者輸入了以下修改要求:
                 ----------------
                 {request.command}
@@ -172,7 +199,7 @@ class ReportGenerator:
                 if part in self.final_result:
                     previous_context = self.final_result[part]
                     # 判斷是否需要重新爬取資料
-                    modification = QA.ask_self(
+                    modification = self.QA.ask_self(
                         prompt=f"""從以下修改要求和提供的內容判斷是否需要重新爬取資料。大部分情況需要加入新的資料進去時會，
                         需要爬取資料，此時需要回覆"y"。否則回覆"n"。若修改要求和提供的內容完全沒有關聯性或者無法判斷時，請回覆"unknown"。
                         ----------------
@@ -213,7 +240,7 @@ class ReportGenerator:
                     if modification == "y":
                         new_response = generate_report(theme=self.report_config["theme"], titles={part:[self.report_config["titles"][part]]}, links=self.report_config["links"], rerun_process=True)
                     elif modification == "n":
-                        new_response = QA.ask_self(
+                        new_response =self.QA.ask_self(
                             prompt=f"""將此內容根據以下要求進行修改，若無法達成則不要修改任何內容直接輸出原始內容，不要亂撰寫內容:
                             ----------------
                             {mod_command}
@@ -261,45 +288,6 @@ class ReportGenerator:
             "modified_content": "...",
             "part": "..."
         }
-
-# 加載 OpenAI 配置的函數
-def load_openai(config: dict) -> bool:
-    """delete old environment variable and load new one.
-
-    Args:
-        config (dict): dictionary may contain openai_key, azure_key, azure_base.
-
-    Returns:
-        bool: load success or not
-    """
-    # 刪除舊的環境變量
-    if "OPENAI_API_KEY" in os.environ:
-        del os.environ["OPENAI_API_KEY"]
-    if "AZURE_API_BASE" in os.environ:
-        del os.environ["AZURE_API_BASE"]
-    if "AZURE_API_KEY" in os.environ:
-        del os.environ["AZURE_API_KEY"]
-    if "AZURE_API_TYPE" in os.environ:
-        del os.environ["AZURE_API_TYPE"]
-    if "AZURE_API_VERSION" in os.environ:
-        del os.environ["AZURE_API_VERSION"]
-
-    # 設置 OpenAI API 密鑰
-    if "openai_key" in config and config["openai_key"] != "":
-        os.environ["OPENAI_API_KEY"] = config["openai_key"]
-
-        return True
-
-    # 設置 Azure API 配置
-    if ("azure_key" in config and "azure_base" in config
-            and config["azure_key"] != "" and config["azure_base"] != ""):
-        os.environ["AZURE_API_KEY"] = config["azure_key"]
-        os.environ["AZURE_API_BASE"] = config["azure_base"]
-        os.environ["AZURE_API_TYPE"] = "azure"
-        os.environ["AZURE_API_VERSION"] = "2023-05-15"
-        return True
-
-    return False
 
 user_sessions: Dict[str, ReportGenerator] = {}
 
