@@ -24,6 +24,13 @@ def save_session_id(session_id):
     with open(SESSION_FILE, "w") as f:
         f.write(session_id)
 
+def delete_session_id():
+    """
+    刪除保存的會話 ID 文件。
+    """
+    if os.path.exists(SESSION_FILE):
+        os.remove(SESSION_FILE)
+
 class ReportGeneratorShell(cmd.Cmd):
     """
     報告生成器的命令行界面class。
@@ -142,7 +149,11 @@ class ReportGeneratorShell(cmd.Cmd):
             print(f"Error: {response.status_code} - {response.text}")
 
     def do_exit(self, arg):
-        """Exit the Report Generator Shell."""
+        """Delete user session and exit the Report Generator Shell."""
+        session_id = load_session_id()
+        delete_session_id()
+        requests.delete(f"{API_BASE_URL}/delete_session", headers={"session_id": session_id})
+        print("Session deleted.")
         print("Goodbye!")
         return True
 

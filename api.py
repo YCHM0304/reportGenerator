@@ -341,6 +341,13 @@ async def reprocess_content(request: ReprocessContentRequest, session_data: tupl
     result = generator.reprocess_content(request)
     return {"session_id": session_id, "result": result}
 
+@app.delete("/delete_session")
+async def delete_session(session_data: tuple = Depends(get_report_generator)):
+    """刪除會話的 API 端點"""
+    _, session_id = session_data
+    del user_sessions[session_id]
+    return {"session_id": session_id, "result": "Session deleted"}
+
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run(app, host="127.0.0.1", port=8000)
