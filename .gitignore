@@ -2,3 +2,4 @@ chromadb/
 .env
 .session_id
 command.txt
+result.json

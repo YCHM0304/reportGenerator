@@ -120,10 +120,13 @@ class ReportGeneratorShell(cmd.Cmd):
                             ("Check Report Status", "check"),
                             ("Get Report", "get"),
                             ("Reprocess Content", "reprocess"),
+                            ("Return to main menu", "back")
                         ]
                     )
                 ]
                 answer = inquirer.prompt(questions)
+                if answer["help_option"] == "back":
+                    continue
                 self.do_help(answer["help_option"])
                 time.sleep(1.5)
             elif choice == 'prompt':
@@ -162,24 +165,31 @@ class ReportGeneratorShell(cmd.Cmd):
 
         i = 1
         titles_dict = {}
-        while True:
-            si = 1
-            t = inquirer.text(message=f"Enter the {i} title")
-            if t == 'end':
-                break
-            tmp_title = []
-            while True:
-                st = inquirer.text(message=f"Enter the {si} subtitle of the {i} title")
-                if st == 'end':
-                    break
-                tmp_title.append(st)
-                si += 1
-            titles_dict[t] = tmp_title
-            i += 1
 
-        if not titles_dict:
-            print("Error: At least one title is required. Use 'help generate' for usage.")
-            return
+        confirm = "no"
+
+        while confirm == "no":
+            while True:
+                si = 1
+                t = inquirer.text(message=f"Enter the {i} title (or 'end' to finish)")
+                if t == 'end':
+                    break
+                tmp_title = []
+                while True:
+                    st = inquirer.text(message=f"Enter the {si} subtitle of the {i} title (or 'end' to finish)")
+                    if st == 'end':
+                        break
+                    tmp_title.append(st)
+                    si += 1
+                titles_dict[t] = tmp_title
+                i += 1
+
+            if not titles_dict:
+                print("Error: At least one title is required. Use 'help generate' for usage.")
+                return
+            print(json.dumps(titles_dict, indent=2, ensure_ascii=False))
+            confirm = inquirer.list_input(message="Is this correct?", choices=["yes", "no"], default="no")
+
 
         i = 1
         links_list = []
@@ -214,7 +224,7 @@ class ReportGeneratorShell(cmd.Cmd):
         if response.status_code == 200:
             result = response.json()
             save_session_id(result["session_id"])
-            print(f"Report generated successfully. Session ID: {result['session_id']}")
+            print(f"Report generated successfully. Session ID: {result['session_id']}. Total time: {result['total_time']} seconds.")
         else:
             print(f"Error: {response.status_code} - {response.text}")
 

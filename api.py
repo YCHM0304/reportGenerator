@@ -8,8 +8,11 @@ import os
 from bs4 import BeautifulSoup
 import uuid
 import json
+import time
+import concurrent.futures
 
 app = FastAPI()
+thread_local = local()
 
 class ReportRequest(BaseModel):
     theme: str
@@ -63,7 +66,6 @@ class ReportGenerator:
         return False
 
     def generate_report(self, request: ReportRequest):
-        # 生成報告
         self.report_config["theme"] = request.theme
         self.report_config["titles"] = request.titles.copy()
         self.report_config["links"] = request.links.copy()
@@ -71,17 +73,17 @@ class ReportGenerator:
 
         if not self.load_openai():
             raise HTTPException(status_code=400, detail="請提供OpenAI或Azure的API金鑰")
+
         result = {}
         contexts = []
         self.QA = akasha.Doc_QA(model=self.model, max_doc_len=8000)
         self.summary = akasha.Summary(chunk_size=1000, max_doc_len=7000)
 
-        # 遍歷每個標題和子標題
-        for title, subtitle in request.titles.items():
+        def process_title(title, subtitle):
             format_prompt = f"以{request.theme}為主題，請你總結撰寫出與\"{title}\"相關的內容，其中需包含{subtitle}，不需要結論，不需要回應要求。"
+            title_contexts = []
             for link in request.links:
                 try:
-                    # 獲取並解析鏈接內容
                     response = requests.get(link)
                     response.raise_for_status()
                     soup = BeautifulSoup(response.content, 'html.parser')
@@ -89,20 +91,32 @@ class ReportGenerator:
                 except requests.exceptions.RequestException as e:
                     raise HTTPException(status_code=400, detail=f"Error fetching content: {str(e)}")
 
-                contexts.append(
+                title_contexts.append(
                     self.summary.summarize_articles(
                         articles=texts,
                         format_prompt=format_prompt,
                     )
                 )
-            # 使用 QA 模型生成內容
+
             response = self.QA.ask_self(
                 prompt=f"將此內容以客觀角度進行融合，避免使用\"報告中提到\"相關詞彙，避免修改專有名詞，避免做出總結，直接撰寫內容，避免回應要求。",
-                info=contexts,
+                info=title_contexts,
                 model="openai:gpt-4"
             )
-            result[title] = response
-            contexts = []
+            return title, response
+
+        # 使用線程池處理每個標題
+        start_time = time.time()
+        with concurrent.futures.ThreadPoolExecutor(max_workers=5) as executor:
+            future_to_title = {executor.submit(process_title, title, subtitle): title for title, subtitle in request.titles.items()}
+            for future in concurrent.futures.as_completed(future_to_title):
+                title = future_to_title[future]
+                try:
+                    title, response = future.result()
+                    result[title] = response
+                except Exception as exc:
+                    print(f'{title} generated an exception: {exc}')
+
         # 生成內容摘要
         previous_result = ""
         for value in result.values():
@@ -113,20 +127,9 @@ class ReportGenerator:
             format_prompt=f"將內容以{request.theme}為主題進行摘要，將用字換句話說，意思不變，不需要結論，不需要回應要求。",
             summary_len=500
         )
+        total_time = time.time() - start_time
         self.final_result = result.copy()
-        return self.final_result
-
-    # def check_result(self):
-    #     # 檢查報告是否已生成
-    #     if not self.final_result:
-    #         return False
-    #     if not self.report_config["theme"]:
-    #         return False
-    #     if not self.report_config["titles"]:
-    #         return False
-    #     if not self.report_config["links"]:
-    #         return False
-    #     return True
+        return self.final_result, total_time
 
     def save_result(self, save_path: str="./result.json"):
         # 檢查文件是否存在
@@ -355,9 +358,9 @@ def get_report_generator(session_id: str = Header(alias="session_id", default=No
 async def generate_report(request: ReportRequest, session_data: tuple = Depends(get_report_generator)):
     """生成報告的 API 端點"""
     generator, session_id = session_data
-    result = generator.generate_report(request)
+    result, total_time = generator.generate_report(request)
     generator.save_result()
-    return {"session_id": session_id, "result": result}
+    return {"session_id": session_id, "result": result, "total_time": total_time}
 
 
 @app.get("/check_result")
