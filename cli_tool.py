@@ -88,6 +88,7 @@ class ReportGeneratorShell(cmd.Cmd):
                     ("Reprocess Content", "reprocess"),
                     ("Help", "help"),
                     ("Prompt", "prompt"),
+                    ("Delete Session", "delete session"),
                     ("Exit", "exit")
                 ]
             )
@@ -127,6 +128,8 @@ class ReportGeneratorShell(cmd.Cmd):
                 time.sleep(1.5)
             elif choice == 'prompt':
                 self.prompt_mode()
+            elif choice == 'delete session':
+                self.do_delete_session('')
             elif choice == 'exit':
                 self.do_exit('')
                 break
@@ -277,14 +280,17 @@ class ReportGeneratorShell(cmd.Cmd):
             print(f"Error: {response.status_code} - {response.text}")
 
     def do_exit(self, arg):
-        """Delete user session and exit the Report Generator Shell."""
+        """Exit the Report Generator Shell."""
+        print("Goodbye!")
+        return True
+
+    def do_delete_session(self, arg):
+        """Delete the saved session ID and end the session."""
         if os.path.exists(SESSION_FILE):
             session_id = load_session_id()
             requests.delete(f"{API_BASE_URL}/delete_session", headers={"session_id": session_id})
             delete_session_id()
             print("Session deleted.")
-        print("Goodbye!")
-        return True
 
 if __name__ == '__main__':
     ReportGeneratorShell().cmdloop()

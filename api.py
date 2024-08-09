@@ -165,6 +165,18 @@ class ReportGenerator:
         else:
             return False
 
+    def delete_result(self, delete_path: str="./result.json"):
+        # 檢查文件是否存在
+        if os.path.exists(delete_path):
+            # 如果文件存在，先讀取現有的數據
+            with open(delete_path, "r") as f:
+                existing_data = json.load(f)
+            # 刪除指定的會話
+            existing_data.pop(self.session_id)
+            # 將更新後的數據寫入文件
+            with open(delete_path, "w") as f:
+                json.dump(existing_data, f, ensure_ascii=False, indent=4)
+
     def reprocess_content(self, request: ReprocessContentRequest):
          # 重新處理內容
         if not self.final_result:
@@ -376,7 +388,8 @@ async def reprocess_content(request: ReprocessContentRequest, session_data: tupl
 @app.delete("/delete_session")
 async def delete_session(session_data: tuple = Depends(get_report_generator)):
     """刪除會話的 API 端點"""
-    _, session_id = session_data
+    generator, session_id = session_data
+    generator.delete_result()
     del user_sessions[session_id]
     return {"session_id": session_id, "result": "Session deleted"}
 
