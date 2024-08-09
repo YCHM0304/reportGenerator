@@ -7,6 +7,7 @@ import requests
 import os
 from bs4 import BeautifulSoup
 import uuid
+import json
 
 app = FastAPI()
 
@@ -22,7 +23,7 @@ class ReprocessContentRequest(BaseModel):
 
 # 定義 request model
 class ReportGenerator:
-    def __init__(self):
+    def __init__(self, session_id: str=""):
         self.final_result = {}
         self.report_config = {
             "theme": "",
@@ -31,6 +32,7 @@ class ReportGenerator:
         }
         self.model = "openai:gpt-4"
         self.openai_config = {}
+        self.session_id = session_id
 
     def load_openai(self) -> bool:
         # 刪除舊的環境變量
@@ -114,17 +116,54 @@ class ReportGenerator:
         self.final_result = result.copy()
         return self.final_result
 
-    def check_result(self):
-         # 檢查報告是否已生成
-        if not self.final_result:
+    # def check_result(self):
+    #     # 檢查報告是否已生成
+    #     if not self.final_result:
+    #         return False
+    #     if not self.report_config["theme"]:
+    #         return False
+    #     if not self.report_config["titles"]:
+    #         return False
+    #     if not self.report_config["links"]:
+    #         return False
+    #     return True
+
+    def save_result(self, save_path: str="./result.json"):
+        # 檢查文件是否存在
+        if os.path.exists(save_path):
+            # 如果文件存在，先讀取現有的數據
+            with open(save_path, "r") as f:
+                existing_data = json.load(f)
+        else:
+            # 如果文件不存在，創建一個空字典
+            existing_data = {}
+
+        # 將新的結果加入到現有數據中
+        existing_data[self.session_id] = {"final_result": self.final_result, "report_config": self.report_config}
+
+        # 將更新後的數據寫入文件
+        with open(save_path, "w") as f:
+            json.dump(existing_data, f, ensure_ascii=False, indent=4)
+
+    def load_result(self, load_path: str="./result.json"):
+        # 檢查文件是否存在
+        if os.path.exists(load_path):
+            # 如果文件存在，先讀取現有的數據
+            with open(load_path, "r") as f:
+                existing_data = json.load(f)
+            self.final_result = existing_data[self.session_id]["final_result"]
+            self.report_config = existing_data[self.session_id]["report_config"]
+            if not self.final_result:
+                return False
+            if not self.report_config["theme"]:
+                return False
+            if not self.report_config["titles"]:
+                return False
+            if not self.report_config["links"]:
+                return False
+            return True
+        else:
             return False
-        if not self.report_config["theme"]:
-            return False
-        if not self.report_config["titles"]:
-            return False
-        if not self.report_config["links"]:
-            return False
-        return True
 
     def reprocess_content(self, request: ReprocessContentRequest):
          # 重新處理內容
@@ -296,7 +335,7 @@ def get_report_generator(session_id: str = Header(alias="session_id", default=No
     if session_id is None:
         session_id = str(uuid.uuid4())
     if session_id not in user_sessions:
-        user_sessions[session_id] = ReportGenerator()
+        user_sessions[session_id] = ReportGenerator(session_id=session_id)
     return user_sessions[session_id], session_id
 
 # API 路由
@@ -305,6 +344,7 @@ async def generate_report(request: ReportRequest, session_data: tuple = Depends(
     """生成報告的 API 端點"""
     generator, session_id = session_data
     result = generator.generate_report(request)
+    generator.save_result()
     return {"session_id": session_id, "result": result}
 
 
@@ -312,20 +352,24 @@ async def generate_report(request: ReportRequest, session_data: tuple = Depends(
 async def check_result(session_data: tuple = Depends(get_report_generator)):
     """檢查報告結果的 API 端點"""
     generator, session_id = session_data
-    return {"session_id": session_id, "result": generator.check_result()}
+    return {"session_id": session_id, "result": generator.load_result()}
 
 @app.get("/get_report")
 async def get_report(session_data: tuple = Depends(get_report_generator)):
     """獲取報告的 API 端點"""
     generator, session_id = session_data
-    result = generator.final_result
-    return {"session_id": session_id, "result": result}
+    if generator.load_result():
+        result = generator.final_result
+        return {"session_id": session_id, "result": result}
+    else:
+        raise HTTPException(status_code=400, detail="報告尚未生成")
 
 
 @app.post("/reprocess_content")
 async def reprocess_content(request: ReprocessContentRequest, session_data: tuple = Depends(get_report_generator)):
     """重新處理內容的 API 端點"""
     generator, session_id = session_data
+    generator.load_result()
     result = generator.reprocess_content(request)
     return {"session_id": session_id, "result": result}
 
