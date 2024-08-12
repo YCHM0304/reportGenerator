@@ -16,7 +16,7 @@ from sqlalchemy.orm import sessionmaker
 from contextlib import contextmanager
 
 # 從環境變量獲取數據庫 URL，如果沒有設置，則使用默認值
-DATABASE_URL = os.getenv("DATABASE_URL", "postgresql://user:password@localhost/reportdb")
+DATABASE_URL = os.getenv("DATABASE_URL", "postgresql://reportuser:report_password@localhost/reportdb")
 
 # 創建數據庫引擎
 engine = create_engine(DATABASE_URL)
