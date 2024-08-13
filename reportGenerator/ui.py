@@ -59,8 +59,31 @@ def handle_session_id_input():
         st.sidebar.success("Session ID cleared")
         st.rerun()  # Rerun the app to reflect changes
 
+def reset_states():
+    st.session_state.current_page = 'generate_report'
+    st.session_state.generate_report_clicked = False
+    st.session_state.reprocess_report_clicked = False
+    st.session_state.theme = ""
+    st.session_state.num_titles = 1
+    st.session_state.titles_dict = {}
+    st.session_state.links = ""
+
 # 生成報告
 def generate_report(api_config):
+    # Initialize or update current page state
+    if 'current_page' not in st.session_state:
+        st.session_state.current_page = 'generate_report'
+    elif st.session_state.current_page != 'generate_report':
+        # Reset num_titles when coming from a different page
+        st.session_state.num_titles = 1
+        st.session_state.generate_report_clicked = False
+        st.session_state.current_page = 'generate_report'
+
+    # Initialize button states
+    if 'generate_report_clicked' not in st.session_state:
+        st.session_state.generate_report_clicked = False
+        st.session_state.reprocess_report_clicked = False
+
     st.header("Generate Report")
 
     theme = st.text_input("Enter the theme of the report")
@@ -70,8 +93,13 @@ def generate_report(api_config):
     if 'num_titles' not in st.session_state:
         st.session_state.num_titles = 1
 
-    if st.button("Add Title", key="add_title"):
-        st.session_state.num_titles += 1
+    col1, col2 = st.columns(2)
+    with col1:
+        if st.button("Add Title", key="add_title"):
+            st.session_state.num_titles += 1
+    with col2:
+        if st.button("Reset Titles", key="reset_titles"):
+            st.session_state.num_titles = 1
 
     for i in range(st.session_state.num_titles):
         col1, col2 = st.columns(2)
@@ -85,28 +113,44 @@ def generate_report(api_config):
     links = st.text_area("Enter links (one per line)")
     links_list = links.split('\n') if links else []
 
-    if st.button("Generate Report", key="generate_report"):
+    # Place Generate Report and Reset All buttons side by side
+    col1, col2 = st.columns(2)
+    with col1:
+        generate_report_clicked = st.button("Generate Report", key="generate_report", disabled=st.session_state.generate_report_clicked, use_container_width=True)
+    with col2:
+        reset_all = st.button("Reset All", key="reset_all", use_container_width=True, disabled=not st.session_state.generate_report_clicked)
+    if generate_report_clicked:
+        st.session_state.generate_report_clicked = True
+        st.rerun()
+    if reset_all:
+        reset_states()
+        st.rerun()
+
+    if st.session_state.generate_report_clicked:
         if not theme or not titles_dict or not links_list:
             st.error("Please fill in all fields.")
-            return
-
-        data = {
-            "theme": theme,
-            "titles": titles_dict,
-            "links": links_list,
-            "openai_config": api_config
-        }
-
-        session_id = get_session_id()
-        headers = {"session_id": session_id} if session_id else {}
-
-        response = requests.post(f"{API_BASE_URL}/generate_report", json=data, headers=headers, verify=False)
-        if response.status_code == 200:
-            result = response.json()
-            set_session_id(result["session_id"])
-            st.success(f"Report generated successfully. Session ID: {result['session_id']}. Total time: {result['total_time']} seconds.")
+            st.rerun()
         else:
-            st.error(f"Error: {response.status_code} - {response.text}")
+            data = {
+                "theme": theme,
+                "titles": titles_dict,
+                "links": links_list,
+                "openai_config": api_config
+            }
+
+            session_id = get_session_id()
+            headers = {"session_id": session_id} if session_id else {}
+
+            with st.spinner("Generating report..."):
+                response = requests.post(f"{API_BASE_URL}/generate_report", json=data, headers=headers, verify=False)
+                if response.status_code == 200:
+                    result = response.json()
+                    set_session_id(result["session_id"])
+                    st.success(f"Report generated successfully. Session ID: {result['session_id']}. Total time: {result['total_time']} seconds.")
+                else:
+                    st.error(f"Error: {response.status_code} - {response.text}")
+        st.session_state.generate_report_clicked = False
+
 
 # def check_report():
 #     st.header("Check Report Status")
@@ -126,6 +170,8 @@ def generate_report(api_config):
 
 # 獲取報告
 def get_report():
+    # Initialize or update current page state
+    st.session_state.current_page = 'get_report'
     st.header("Get Report")
 
     session_id = get_session_id()
@@ -133,7 +179,7 @@ def get_report():
         st.warning("No active session. Generate a report first.")
         return
 
-    if st.button("Get Report"):
+    if st.button("Get Report", disabled=st.session_state.generate_report_clicked or st.session_state.reprocess_report_clicked):
         response = requests.get(f"{API_BASE_URL}/get_report", headers={"session_id": session_id})
         if response.status_code == 200:
             result = response.json()
@@ -144,15 +190,32 @@ def get_report():
 # 重新處理內容
 def reprocess_content():
     st.header("Reprocess Content")
-
+    st.session_state.reprocess_report_clicked = False
     session_id = get_session_id()
+
+    # Initialize button states
+    st.session_state.current_page = 'reprocess_content'
+
     if not session_id:
         st.warning("No active session. Generate a report first.")
         return
 
     command = st.text_input("Enter the command for reprocess")
 
-    if st.button("Reprocess"):
+        # Place Generate Report and Reset All buttons side by side
+    col1, col2 = st.columns(2)
+    with col1:
+        reprocess_report_clicked = st.button("Reprocess Report", key="reprocess_report", disabled=st.session_state.reprocess_report_clicked, use_container_width=True)
+    with col2:
+        reset_all = st.button("Reset All", key="reset_all", use_container_width=True, disabled=not st.session_state.reprocess_report_clicked)
+    if reprocess_report_clicked:
+        st.session_state.reprocess_report_clicked = True
+        st.rerun()
+    if reset_all:
+        reset_states()
+        st.rerun()
+
+    if st.session_state.reprocess_report_clicked:
         if not command:
             st.error("Command is required.")
             return
@@ -162,23 +225,25 @@ def reprocess_content():
             "openai_config": {}  # 如果需要，添加 OpenAI 配置
         }
 
-        response = requests.post(f"{API_BASE_URL}/reprocess_content", json=data, headers={"session_id": session_id})
-        if response.status_code == 200:
-            result = response.json()
-            st.success("Content reprocessed successfully:")
-            st.write(f"Part: {result['result']['part']}")
-            st.subheader("Original content:")
-            st.write(result['result']['original_content'])
-            st.subheader("Modified content:")
-            st.write(result['result']['modified_content'])
-        else:
-            st.error(f"Error: {response.status_code} - {response.text}")
-
+        with st.spinner("Reprocessing report..."):
+            response = requests.post(f"{API_BASE_URL}/reprocess_content", json=data, headers={"session_id": session_id})
+            if response.status_code == 200:
+                result = response.json()
+                st.success("Content reprocessed successfully:")
+                st.write(f"Part: {result['result']['part']}")
+                st.subheader("Original content:")
+                st.write(result['result']['original_content'])
+                st.subheader("Modified content:")
+                st.write(result['result']['modified_content'])
+            else:
+                st.error(f"Error: {response.status_code} - {response.text}")
+        st.session_state.reprocess_report_clicked = False
 # 刪除會話
 def delete_session():
+    st.session_state.current_page = 'delete_session'
     st.header("Delete Session")
 
-    if st.button("Delete Session"):
+    if st.button("Delete Session", disabled=st.session_state.generate_report_clicked or st.session_state.reprocess_report_clicked):
         session_id = get_session_id()
         if session_id:
             response = requests.delete(f"{API_BASE_URL}/delete_session", headers={"session_id": session_id})

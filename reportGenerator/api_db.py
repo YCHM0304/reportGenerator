@@ -112,47 +112,50 @@ class ReportGenerator:
             raise HTTPException(status_code=400, detail="請提供OpenAI或Azure的API金鑰")
 
         result = {}
-        contexts = []
         self.QA = akasha.Doc_QA(model=self.model, max_doc_len=8000)
         self.summary = akasha.Summary(chunk_size=1000, max_doc_len=7000)
 
-        def process_title(title, subtitle):
-            format_prompt = f"以{request.theme}為主題，請你總結撰寫出與\"{title}\"相關的內容，其中需包含{subtitle}，不需要結論，不需要回應要求。"
-            title_contexts = []
-            for link in request.links:
-                try:
-                    response = requests.get(link)
-                    response.raise_for_status()
-                    soup = BeautifulSoup(response.content, 'html.parser')
-                    texts = soup.get_text()
-                except requests.exceptions.RequestException as e:
-                    raise HTTPException(status_code=400, detail=f"Error fetching content: {str(e)}")
-
-                title_contexts.append(
-                    self.summary.summarize_articles(
-                        articles=texts,
-                        format_prompt=format_prompt,
-                    )
+        def process_link(link, format_prompt):
+            try:
+                response = requests.get(link)
+                response.raise_for_status()
+                soup = BeautifulSoup(response.content, 'html.parser')
+                texts = soup.get_text()
+                return self.summary.summarize_articles(
+                    articles=texts,
+                    format_prompt=format_prompt,
                 )
+            except requests.exceptions.RequestException as e:
+                print(f"Error fetching content from {link}: {str(e)}")
+                return ""
 
-            response = self.QA.ask_self(
-                prompt=f"將此內容以客觀角度進行融合，避免使用\"報告中提到\"相關詞彙，避免修改專有名詞，避免做出總結，直接撰寫內容，避免回應要求。",
-                info=title_contexts,
-                model="openai:gpt-4"
-            )
-            return title, response
-
-        # 使用線程池處理每個標題
         start_time = time.time()
         with concurrent.futures.ThreadPoolExecutor(max_workers=5) as executor:
-            future_to_title = {executor.submit(process_title, title, subtitle): title for title, subtitle in request.titles.items()}
-            for future in concurrent.futures.as_completed(future_to_title):
-                title = future_to_title[future]
-                try:
-                    title, response = future.result()
+            for title, subtitle in request.titles.items():
+                format_prompt = f"以{request.theme}為主題，請你總結撰寫出與\"{title}\"相關的內容，其中需包含{subtitle}，不需要結論，不需要回應要求。"
+
+                # 並行處理每個連結
+                future_to_link = {executor.submit(process_link, link, format_prompt): link for link in request.links}
+                title_contexts = []
+                for future in concurrent.futures.as_completed(future_to_link):
+                    link = future_to_link[future]
+                    try:
+                        summary = future.result()
+                        if summary:
+                            title_contexts.append(summary)
+                    except Exception as exc:
+                        print(f'{link} generated an exception: {exc}')
+
+                # 融合該標題的所有摘要
+                if title_contexts:
+                    response = self.QA.ask_self(
+                        prompt=f"將此內容以客觀角度進行融合，避免使用\"報告中提到\"相關詞彙，避免修改專有名詞，避免做出總結，直接撰寫內容，避免回應要求。",
+                        info=title_contexts,
+                        model="openai:gpt-4"
+                    )
                     result[title] = response
-                except Exception as exc:
-                    print(f'{title} generated an exception: {exc}')
+                else:
+                    result[title] = "無法獲取相關內容"
 
         # 生成內容摘要
         previous_result = ""
