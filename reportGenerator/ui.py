@@ -3,21 +3,26 @@ import requests
 import json
 import os
 
+# API 基礎 URL
 API_BASE_URL = "http://127.0.0.1:8000"
 
+# 獲取當前會話 ID
 def get_session_id():
     """Get the current session ID from Streamlit's session state."""
     return st.session_state.get('session_id', None)
 
+# 設置會話 ID
 def set_session_id(session_id):
     """Set the session ID in Streamlit's session state."""
     st.session_state['session_id'] = session_id
 
+# 清除會話 ID
 def clear_session_id():
     """Clear the session ID from Streamlit's session state."""
     if 'session_id' in st.session_state:
         del st.session_state['session_id']
 
+# 設置 API
 def setup_api():
     api_type = st.sidebar.selectbox("Select the API to use", ["OpenAI", "Azure"])
 
@@ -29,6 +34,7 @@ def setup_api():
         azure_base = st.sidebar.text_input("Enter your Azure base URL")
         return {"azure_key": azure_key, "azure_base": azure_base}
 
+# 處理會話 ID 輸入
 def handle_session_id_input():
     st.sidebar.header("Session Management")
 
@@ -40,11 +46,11 @@ def handle_session_id_input():
 
     if st.sidebar.button("Use This Session ID"):
         if new_session_id:
-            # Validate the session ID (you may want to add more robust validation)
+            # 驗證會話 ID
             if len(new_session_id.strip()) > 0:
                 set_session_id(new_session_id)
                 st.sidebar.success(f"Session ID updated to: {new_session_id}")
-                st.rerun()  # Rerun the app to reflect changes
+                st.rerun()  # 重新運行
             else:
                 st.sidebar.error("Invalid Session ID")
 
@@ -53,6 +59,7 @@ def handle_session_id_input():
         st.sidebar.success("Session ID cleared")
         st.rerun()  # Rerun the app to reflect changes
 
+# 生成報告
 def generate_report(api_config):
     st.header("Generate Report")
 
@@ -101,22 +108,23 @@ def generate_report(api_config):
         else:
             st.error(f"Error: {response.status_code} - {response.text}")
 
-def check_report():
-    st.header("Check Report Status")
+# def check_report():
+#     st.header("Check Report Status")
 
-    session_id = get_session_id()
-    if not session_id:
-        st.warning("No active session. Generate a report first.")
-        return
+#     session_id = get_session_id()
+#     if not session_id:
+#         st.warning("No active session. Generate a report first.")
+#         return
 
-    if st.button("Check Status"):
-        response = requests.get(f"{API_BASE_URL}/check_result", headers={"session_id": session_id})
-        if response.status_code == 200:
-            result = response.json()
-            st.info(f"Result available: {result['result']}")
-        else:
-            st.error(f"Error: {response.status_code} - {response.text}")
+#     if st.button("Check Status"):
+#         response = requests.get(f"{API_BASE_URL}/check_result", headers={"session_id": session_id})
+#         if response.status_code == 200:
+#             result = response.json()
+#             st.info(f"Result available: {result['result']}")
+#         else:
+#             st.error(f"Error: {response.status_code} - {response.text}")
 
+# 獲取報告
 def get_report():
     st.header("Get Report")
 
@@ -133,6 +141,7 @@ def get_report():
         else:
             st.error(f"Error: {response.status_code} - {response.text}")
 
+# 重新處理內容
 def reprocess_content():
     st.header("Reprocess Content")
 
@@ -150,7 +159,7 @@ def reprocess_content():
 
         data = {
             "command": command,
-            "openai_config": {}  # Add OpenAI config if needed
+            "openai_config": {}  # 如果需要，添加 OpenAI 配置
         }
 
         response = requests.post(f"{API_BASE_URL}/reprocess_content", json=data, headers={"session_id": session_id})
@@ -165,6 +174,7 @@ def reprocess_content():
         else:
             st.error(f"Error: {response.status_code} - {response.text}")
 
+# 刪除會話
 def delete_session():
     st.header("Delete Session")
 
@@ -180,19 +190,18 @@ def delete_session():
         else:
             st.info("No active session to delete.")
 
+# 主函數
 def main():
     st.title("Report Generator")
 
     api_config = setup_api()
     handle_session_id_input()
 
-    menu = ["Generate Report", "Check Report Status", "Get Report", "Reprocess Content", "Delete Session"]
+    menu = ["Generate Report", "Get Report", "Reprocess Content", "Delete Session"]
     choice = st.sidebar.selectbox("Menu", menu)
 
     if choice == "Generate Report":
         generate_report(api_config)
-    elif choice == "Check Report Status":
-        check_report()
     elif choice == "Get Report":
         get_report()
     elif choice == "Reprocess Content":
