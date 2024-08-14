@@ -7,6 +7,7 @@
     - [Generate Report](#generate-report)
     - [Get Report](#get-report)
     - [Reprocess Report](#reprocess-report)
+    - [Delete Session](#delete-session)
 
 
 ## Environment Building
@@ -97,7 +98,7 @@ After generating the report, the web page will automatically save your session i
 
 ### Get Report
 
-After generating the report, you can take a look at the generated report by pressing the `Get Report` button.
+After generating the report, you can take a look at the generated report by clicking the `Get Report` button.
 
 ![Get Report](images/get_report.png)
 
@@ -112,6 +113,6 @@ If you want to modify the generated report, you can fill in your needs and press
 
 ### Delete Session
 
-When you don't need the session anymore, you can delete the session by pressing the `Delete Session` button. By doing this, the generated report stored in the database will be deleted.
+When you don't need the session anymore, you can delete the session by clicking the `Delete Session` button. By doing this, the generated report stored in the database will be deleted.
 
 ![Delete Session](images/delete_report.png)
