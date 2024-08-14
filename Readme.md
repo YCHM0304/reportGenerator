@@ -2,12 +2,14 @@
 - [Report generator using akasha](#report-generator-using-akasha)
   - [Environment Building](#environment-building)
   - [Postgres Database Setup](#postgres-database-setup)
+    - [Session ID Database](#session-id-database)
+    - [Username/Password Database](#usernamepassword-database)
   - [API Server Setup](#api-server-setup)
+    - [Session ID API](#session-id-api)
+    - [Username/Password API](#usernamepassword-api)
   - [WebUI Setup](#webui-setup)
-    - [Generate Report](#generate-report)
-    - [Get Report](#get-report)
-    - [Reprocess Report](#reprocess-report)
-    - [Delete Session](#delete-session)
+    - [Session ID UI](#session-id-ui)
+    - [Username/Password UI](#usernamepassword-ui)
 
 
 ## Environment Building
@@ -34,32 +36,57 @@ pip install -r requirements.txt
 <br/>
 
 ## Postgres Database Setup
-In this project, I used a Postgres database to store the generated reports.
+In this project, I used a Postgres database to store the generated reports. There are two types of database. One is for session id authentication and the other is for username/password authentication.
 
 <br/>
 
-Run the following command to create a new database.
+### Session ID Database
+The session id database is used to store the generated report. Run the following command to create a new database.
 
 ```bash
 bash ./scripts/create_db.sh
 ```
+
+### Username/Password Database
+The username/password database is used to store the user's information and the generated report. Run the following command to create a new database.
+
+```bash
+bash ./scripts/create_db_auth.sh
+```
+
 > [!IMPORTANT]
 > `DB_NAME`, `DB_USER`, `DB_PASSWORD` are originally set to `reportdb`, `reportuser`, `reportpassword` respectively. Remember to change these values in the `create_db.sh` file if you want to use different values.
 
+<br/>
+
 ## API Server Setup
-To start the API server, run the following command.
+
+### Session ID API
+To start the API server for the session id database, run the following command.
 
 ```bash
 python ./reportGenerator/api_tool.py
 ```
 
+### Username/Password API
+To start the API server for the username/password database, run the following command.
+
+```bash
+python ./reportGenerator/api_auth.py
+```
+
+<br/>
+
 ## WebUI Setup
-To start the WebUI, run the following command.
+
+### Session ID UI
+To start the WebUI for session id api, run the following command.
 
 ```bash
 streamlit run ./reportGenerator/ui.py
 ```
-This is the main page of the WebUI.
+
+This is the main page of the WebUI for the session id api.
 
 ![Full page](images/full_page.png)
 
@@ -84,7 +111,7 @@ Then, choose which function to use.(`Generate Report`, `Get Report`, `Reprocess 
 <br/>
 <br/>
 
-### Generate Report
+**Generate Report**
 
 Fill in the theme and titles of the report and the links to the data you want to use. Then press the `Generate Report` button to generate the report. It may take a few minutes to generate the report.
 
@@ -96,13 +123,13 @@ After generating the report, the web page will automatically save your session i
 
 <br/>
 
-### Get Report
+**Get Report**
 
 After generating the report, you can take a look at the generated report by clicking the `Get Report` button.
 
 ![Get Report](images/get_report.png)
 
-### Reprocess Report
+**Reprocess Report**
 
 If you want to modify the generated report, you can fill in your needs and press the `Reprocess Report` button.
 
@@ -111,8 +138,27 @@ If you want to modify the generated report, you can fill in your needs and press
 
 ![Reprocess Report](images/reprocess_content.png)
 
-### Delete Session
+**Delete Session**
 
 When you don't need the session anymore, you can delete the session by clicking the `Delete Session` button. By doing this, the generated report stored in the database will be deleted.
 
 ![Delete Session](images/delete_report.png)
+
+<br/>
+
+### Username/Password UI
+To start the WebUI for username/password api, run the following command.
+
+```bash
+streamlit run ./reportGenerator/ui_auth.py
+```
+
+The most of the UI is the same as the session id UI. The only difference are the login page and the register page.
+
+If you don't have an account, you can register by clicking the `Register` button.
+
+![Register Page](images/register_page.png)
+
+After registering, you can login with your username and password.
+
+![Login Page](images/login_page.png)
