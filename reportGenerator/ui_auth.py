@@ -2,6 +2,7 @@ import streamlit as st
 import requests
 import json
 import os
+import time
 
 API_BASE_URL = "http://127.0.0.1:8000"
 
@@ -63,6 +64,7 @@ def register_user():
             token = response.json()["access_token"]
             set_access_token(token)
             st.success("Registration successful. You are now logged in.")
+            time.sleep(1)
             st.rerun()
         else:
             st.error(f"Registration failed: {response.text}")
