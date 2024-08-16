@@ -197,7 +197,7 @@ class ReportGenerator:
 
                 if title_contexts:
                     response = self.QA.ask_self(
-                        prompt=f"將此內容以客觀角度進行融合，避免使用\"報告中提到\"相關詞彙，避免修改專有名詞，避免做出總結，直接撰寫內容，避免回應要求。",
+                        prompt=f"將此內容以客觀角度進行融合，避免使用\"報告中提到\"相關詞彙，避免修改專有名詞，避免做出總結，避免重複內容，直接撰寫內容，避免回應要求。",
                         info=title_contexts,
                         model="openai:gpt-4"
                     )
