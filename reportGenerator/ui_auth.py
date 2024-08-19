@@ -1,5 +1,6 @@
 import streamlit as st
 import requests
+import time
 import json
 import os
 
@@ -92,9 +93,11 @@ def reset_states():
     重置所有相關的 session_state 變量到其初始狀態。
     這用於清理和重置應用程序的狀態。
     """
-    st.session_state.current_page = 'generate_report'
+    st.session_state.current_page = 'generate_and_reprocess_report'
     st.session_state.generate_report_clicked = False
-    st.session_state.reprocess_report_clicked = False
+    st.session_state.reprocess_clicked = False
+    st.session_state.reprocess_command = ""
+    st.session_state.reprocess_result = None
     st.session_state.theme = ""
     st.session_state.num_titles = 1
     st.session_state.titles_dict = {}
@@ -109,12 +112,6 @@ def generate_report(api_config):
     參數:
     api_config (dict): API 配置信息
     """
-    if 'current_page' not in st.session_state:
-        st.session_state.current_page = 'generate_report'
-    elif st.session_state.current_page != 'generate_report':
-        st.session_state.num_titles = 1
-        st.session_state.generate_report_clicked = False
-        st.session_state.current_page = 'generate_report'
 
     if 'generate_report_clicked' not in st.session_state:
         st.session_state.generate_report_clicked = False
@@ -131,10 +128,10 @@ def generate_report(api_config):
 
     col1, col2 = st.columns(2)
     with col1:
-        if st.button("Add Title", key="add_title"):
+        if st.button("Add Title"):
             st.session_state.num_titles += 1
     with col2:
-        if st.button("Reset Titles", key="reset_titles"):
+        if st.button("Reset Titles"):
             st.session_state.num_titles = 1
 
     for i in range(st.session_state.num_titles):
@@ -153,7 +150,7 @@ def generate_report(api_config):
     with col1:
         generate_report_clicked = st.button("Generate Report", key="generate_report", disabled=st.session_state.generate_report_clicked, use_container_width=True)
     with col2:
-        reset_all = st.button("Reset All", key="reset_all", use_container_width=True, disabled=not st.session_state.generate_report_clicked)
+        reset_all = st.button("Reset", key="reset_all", use_container_width=True, disabled=not st.session_state.generate_report_clicked)
     if generate_report_clicked:
         st.session_state.generate_report_clicked = True
         st.rerun()
@@ -183,7 +180,9 @@ def generate_report(api_config):
                     st.success(f"Report generated successfully. Total time: {result['total_time']} seconds.")
                 else:
                     st.error(f"Error: {response.status_code} - {response.text}")
+        time.sleep(2)
         st.session_state.generate_report_clicked = False
+        st.rerun()
 
 # 取得報告
 def get_report():
@@ -208,74 +207,124 @@ def get_report():
         else:
             st.error(f"Error: {response.status_code} - {response.text}")
 
-# 重新處理內容
 def reprocess_content():
     """
     創建重新處理內容界面，允許用戶輸入命令來重新處理之前生成的報告內容。
-    處理重新處理請求並顯示結果。
+    處理重新處理請求並顯示結果。提供選項保存修改後的內容。
+    保留按鈕鎖定功能。
     """
     st.header("Reprocess Content")
-    if 'reprocess_report_clicked' not in st.session_state:
-        st.session_state.reprocess_report_clicked = False
-    st.session_state.current_page = 'reprocess_content'
 
     access_token = get_access_token()
     if not access_token:
         st.warning("Please login first.")
         return
 
-    command = st.text_input("Enter the command for reprocess")
+    # 初始化 session state 變量
+    if 'reprocess_command' not in st.session_state:
+        st.session_state.reprocess_command = ""
+    if 'reprocess_result' not in st.session_state:
+        st.session_state.reprocess_result = None
+    if 'reprocess_clicked' not in st.session_state:
+        st.session_state.reprocess_clicked = False
+
+    command = st.text_input("Enter the command for reprocess", value=st.session_state.reprocess_command)
 
     col1, col2 = st.columns(2)
     with col1:
-        reprocess_report_clicked = st.button("Reprocess Report", key="reprocess_report", disabled=st.session_state.reprocess_report_clicked, use_container_width=True)
+        reprocess_button = st.button("Reprocess Report", disabled=st.session_state.reprocess_clicked, use_container_width=True)
     with col2:
-        reset_all = st.button("Reset All", key="reset_all", use_container_width=True, disabled=not st.session_state.reprocess_report_clicked)
-    if reprocess_report_clicked:
-        st.session_state.reprocess_report_clicked = True
+        reset_button = st.button("Reset", use_container_width=True, disabled=not st.session_state.reprocess_clicked)
+
+    if reprocess_button:
+        st.session_state.reprocess_clicked = True
         st.rerun()
-    if reset_all:
+
+    if reset_button:
         reset_states()
         st.rerun()
 
-    if st.session_state.reprocess_report_clicked:
+    if st.session_state.reprocess_clicked:
         if not command:
             st.error("Command is required.")
-            return
+        else:
+            st.session_state.reprocess_clicked = True
+            st.session_state.reprocess_command = command
+            data = {
+                "command": command,
+                "openai_config": {}  # 如果需要，添加 OpenAI 配置
+            }
 
-        data = {
-            "command": command,
-            "openai_config": {}  # 如果需要，添加 OpenAI 配置
-        }
+            headers = {"Authorization": f"Bearer {access_token}"}
+            with st.spinner("Reprocessing report..."):
+                response = requests.post(f"{API_BASE_URL}/reprocess_content", json=data, headers=headers)
+                if response.status_code == 200:
+                    st.session_state.reprocess_result = response.json()['result']
+                    st.success("Content reprocessed successfully.")
+                else:
+                    st.error(f"Error: {response.status_code} - {response.text}")
+                    st.session_state.reprocess_result = None
+        st.session_state.reprocess_clicked = False
 
-        headers = {"Authorization": f"Bearer {access_token}"}
-        with st.spinner("Reprocessing report..."):
-            response = requests.post(f"{API_BASE_URL}/reprocess_content", json=data, headers=headers)
-            if response.status_code == 200:
-                result = response.json()
-                st.success("Content reprocessed successfully:")
-                st.write(f"Part: {result['result']['part']}")
-                st.subheader("Original content:")
-                st.write(result['result']['original_content'])
-                st.subheader("Modified content:")
-                st.write(result['result']['modified_content'])
+    if st.session_state.reprocess_result:
+        result = st.session_state.reprocess_result
+        st.write(f"Part: {result['part']}")
+        st.subheader("Original content:")
+        st.write(result['original_content'])
+        st.subheader("Modified content:")
+        st.write(result['modified_content'])
+
+        if st.button("Save Changes"):
+            save_data = {
+                "part": result['part'],
+                "new_content": result['modified_content']
+            }
+            headers = {"Authorization": f"Bearer {access_token}"}
+            save_response = requests.post(f"{API_BASE_URL}/save_reprocessed_content", json=save_data, headers=headers)
+            if save_response.status_code == 200:
+                st.success("Changes saved successfully.")
+                # 重置狀態，為下一次重新處理做準備
+                st.session_state.reprocess_result = None
+                st.session_state.reprocess_clicked = False
             else:
-                st.error(f"Error: {response.status_code} - {response.text}")
-        st.session_state.reprocess_report_clicked = False
+                st.error(f"Error saving changes: {save_response.status_code} - {save_response.text}")
+        time.sleep(2)
+        st.rerun()
+
+def generate_and_reprocess_report(api_config):
+    """
+    結合生成報告和重新處理內容的功能。
+    """
+    if 'current_page' not in st.session_state:
+        st.session_state.current_page = 'generate_and_reprocess_report'
+    elif st.session_state.current_page != 'generate_and_reprocess_report':
+        st.session_state.num_titles = 1
+        st.session_state.generate_report_clicked = False
+        st.session_state.reprocess_clicked = False
+        st.session_state.current_page = 'generate_and_reprocess_report'
+    st.header("Generate and Reprocess Report")
+
+    # 生成報告部分
+    generate_report(api_config)
+
+    st.markdown("---")  # 分隔線
+
+    # 重新處理內容部分
+    reprocess_content()
 
 # 登出
-def logout():
-    """
-    創建註銷界面，允許用戶登出當前會話。
-    處理註銷請求並清除訪問令牌。
-    """
-    st.session_state.current_page = 'logout'
-    st.header("Logout")
+# def logout():
+#     """
+#     創建註銷界面，允許用戶登出當前會話。
+#     處理註銷請求並清除訪問令牌。
+#     """
+#     st.session_state.current_page = 'logout'
+#     st.header("Logout")
 
-    if st.button("Logout", disabled=st.session_state.generate_report_clicked or st.session_state.reprocess_report_clicked):
-        clear_access_token()
-        st.success("You have been logged out successfully.")
-        st.rerun()
+#     if st.button("Logout", disabled=st.session_state.generate_report_clicked or st.session_state.reprocess_report_clicked):
+#         clear_access_token()
+#         st.success("You have been logged out successfully.")
+#         st.rerun()
 
 def main():
     st.title("Report Generator")
@@ -285,23 +334,23 @@ def main():
     access_token = get_access_token()
     if not access_token:
         menu = ["Login", "Register"]
+        choice = st.sidebar.selectbox("Menu", menu)
     else:
-        menu = ["Generate Report", "Get Report", "Reprocess Content", "Logout"]
-
-    choice = st.sidebar.selectbox("Menu", menu)
+        menu = ["Generate and Reprocess Report", "Get Report"]
+        choice = st.sidebar.selectbox("Menu", menu)
+        if st.sidebar.button("Logout"):
+            clear_access_token()
+            st.success("You have been logged out successfully.")
+            st.rerun()
 
     if choice == "Login":
         login_user()
     elif choice == "Register":
         register_user()
-    elif choice == "Generate Report":
-        generate_report(api_config)
+    elif choice == "Generate and Reprocess Report":
+        generate_and_reprocess_report(api_config)
     elif choice == "Get Report":
         get_report()
-    elif choice == "Reprocess Content":
-        reprocess_content()
-    elif choice == "Logout":
-        logout()
 
 if __name__ == "__main__":
     main()
