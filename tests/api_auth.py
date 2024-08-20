@@ -1,4 +1,4 @@
-from fastapi import FastAPI, HTTPException, Depends, Header
+from fastapi import FastAPI, HTTPException, Depends, Header, Body
 from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
 from pydantic import BaseModel
 from typing import Dict, List, Any, Optional
@@ -132,6 +132,8 @@ class ReportGenerator:
         }
         self.model = "openai:gpt-4"
         self.openai_config = {}
+        self.QA = akasha.Doc_QA(model=self.model, max_doc_len=8000)
+        self.summary = akasha.Summary(chunk_size=1000, max_doc_len=7000)
 
     def load_openai(self) -> bool:
         # Delete old environment variables
@@ -162,8 +164,6 @@ class ReportGenerator:
             raise HTTPException(status_code=400, detail="請提供OpenAI或Azure的API金鑰")
 
         result = {}
-        self.QA = akasha.Doc_QA(model=self.model, max_doc_len=8000)
-        self.summary = akasha.Summary(chunk_size=1000, max_doc_len=7000)
 
         def process_link(link, format_prompt):
             try:
@@ -197,7 +197,7 @@ class ReportGenerator:
 
                 if title_contexts:
                     response = self.QA.ask_self(
-                        prompt=f"將此內容以客觀角度進行融合，避免使用\"報告中提到\"相關詞彙，避免修改專有名詞，避免做出總結，直接撰寫內容，避免回應要求。",
+                        prompt=f"將此內容以客觀角度進行融合，避免使用\"報告中提到\"相關詞彙，避免修改專有名詞，避免做出總結，避免重複內容，直接撰寫內容，避免回應要求。",
                         info=title_contexts,
                         model="openai:gpt-4"
                     )
@@ -416,6 +416,17 @@ class ReportGenerator:
             "part": "..."
         }
 
+    def update_content(self, part: str, new_content: str):
+        """
+        更新報告中特定部分的內容並保存。
+        """
+        if part in self.final_result:
+            self.final_result[part] = new_content
+            self.save_result()
+            return True
+        return False
+
+
 user_sessions: Dict[str, ReportGenerator] = {}
 
 @app.post("/register", response_model=Token)
@@ -471,6 +482,18 @@ async def get_report(generator: ReportGenerator = Depends(get_report_generator))
         return {"result": result}
     else:
         raise HTTPException(status_code=400, detail="報告尚未生成")
+
+# Add a new API endpoint
+@app.post("/save_reprocessed_content")
+async def save_reprocessed_content(
+    part: str = Body(...),
+    new_content: str = Body(...),
+    generator: ReportGenerator = Depends(get_report_generator)
+):
+    if generator.update_content(part, new_content):
+        return {"result": "Content updated and saved successfully"}
+    else:
+        raise HTTPException(status_code=400, detail="無法更新指定的部分")
 
 @app.post("/reprocess_content")
 async def reprocess_content(request: ReprocessContentRequest, generator: ReportGenerator = Depends(get_report_generator)):

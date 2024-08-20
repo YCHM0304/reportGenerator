@@ -1,5 +1,8 @@
 chromadb/
 .env
 .session_id
+.coverage
 command.txt
 result.json
+tests/*
+*.txt

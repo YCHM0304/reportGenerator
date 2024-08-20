@@ -31,7 +31,36 @@ def clear_access_token():
     if 'access_token' in st.session_state:
         del st.session_state['access_token']
 
-# 設置 API
+# # 設置 API
+# def setup_api():
+#     """
+#     在側邊欄中創建 API 設置界面，允許用戶選擇 API 類型（OpenAI 或 Azure）
+#     並輸入相應的 API 密鑰和（如果適用）基礎 URL。
+
+#     返回:
+#     dict: 包含用戶輸入的 API 配置信息
+#     """
+#     api_type = st.sidebar.selectbox("Select the API to use", ["OpenAI", "Azure"])
+
+#     if api_type == "OpenAI":
+#         openai_key = st.sidebar.text_input("Enter your OpenAI key", type="password")
+#         return {"openai_key": openai_key}
+#     else:
+#         azure_key = st.sidebar.text_input("Enter your Azure key", type="password")
+#         azure_base = st.sidebar.text_input("Enter your Azure base URL")
+#         return {"azure_key": azure_key, "azure_base": azure_base}
+def initialize_session_state():
+    """
+    初始化所有需要的 session state 變量。
+    """
+    if 'api_config' not in st.session_state:
+        st.session_state.api_config = {
+            'api_type': 'OpenAI',
+            'openai_key': '',
+            'azure_key': '',
+            'azure_base': ''
+        }
+
 def setup_api():
     """
     在側邊欄中創建 API 設置界面，允許用戶選擇 API 類型（OpenAI 或 Azure）
@@ -40,15 +69,53 @@ def setup_api():
     返回:
     dict: 包含用戶輸入的 API 配置信息
     """
-    api_type = st.sidebar.selectbox("Select the API to use", ["OpenAI", "Azure"])
+    initialize_session_state()
+
+    api_type = st.sidebar.selectbox(
+        "Select the API to use",
+        ["OpenAI", "Azure"],
+        key="api_type",
+        index=0 if st.session_state.api_config['api_type'] == 'OpenAI' else 1
+    )
 
     if api_type == "OpenAI":
-        openai_key = st.sidebar.text_input("Enter your OpenAI key", type="password")
+        openai_key = st.sidebar.text_input(
+            "Enter your OpenAI key",
+            type="password",
+            value=st.session_state.api_config['openai_key']
+        )
+        st.session_state.api_config.update({
+            'api_type': 'OpenAI',
+            'openai_key': openai_key
+        })
         return {"openai_key": openai_key}
     else:
-        azure_key = st.sidebar.text_input("Enter your Azure key", type="password")
-        azure_base = st.sidebar.text_input("Enter your Azure base URL")
+        azure_key = st.sidebar.text_input(
+            "Enter your Azure key",
+            type="password",
+            value=st.session_state.api_config['azure_key']
+        )
+        azure_base = st.sidebar.text_input(
+            "Enter your Azure base URL",
+            value=st.session_state.api_config['azure_base']
+        )
+        st.session_state.api_config.update({
+            'api_type': 'Azure',
+            'azure_key': azure_key,
+            'azure_base': azure_base
+        })
         return {"azure_key": azure_key, "azure_base": azure_base}
+
+def clear_api_config():
+    """
+    清除存儲在 session state 中的 API 配置。
+    """
+    st.session_state.api_config = {
+        'api_type': 'OpenAI',
+        'openai_key': '',
+        'azure_key': '',
+        'azure_base': ''
+    }
 
 # 用戶註冊
 def register_user():
@@ -342,7 +409,8 @@ def main():
         choice = st.sidebar.selectbox("Menu", menu)
         if st.sidebar.button("Logout"):
             clear_access_token()
-            st.success("You have been logged out successfully.")
+            clear_api_config()
+            st.success("You have been logged out successfully. API configuration has been cleared.")
             st.rerun()
 
     if choice == "Login":
