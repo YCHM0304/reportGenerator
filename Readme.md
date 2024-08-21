@@ -10,6 +10,10 @@
   - [WebUI Setup](#webui-setup)
     - [Session ID UI](#session-id-ui)
     - [Username/Password UI](#usernamepassword-ui)
+  - [Docker Compose Setup](#docker-compose-setup)
+    - [Prerequisites](#prerequisites)
+    - [Usage](#usage)
+    - [Container Details](#container-details)
 
 
 ## Environment Building
@@ -162,3 +166,63 @@ If you don't have an account, you can register by clicking the `Register` button
 After registering, you can login with your username and password.
 
 ![Login Page](images/login_page.png)
+
+<br/>
+
+## Docker Compose Setup
+To simplify the setup process and ensure consistency across different environments, you can use Docker Compose to run the entire application stack. This will start three Docker containers: API, DB, and UI, and map them to specific local ports.
+
+### Prerequisites
+`Docker` and `Docker Compose` installed on your system
+
+### Usage
+Navigate to the project root directory where the `docker-compose.yml` file is located.
+
+Run the following command to start all services:
+```bash
+docker-compose up -d
+```
+
+This command will build (if necessary) and start the containers in detached mode.
+
+The services will be available at the following local ports:
+
+- API: `http://localhost:8001`
+- Database: `Port 5433`
+- UI: `http://localhost:8502`
+
+
+To stop the services, run:
+
+```bash
+Copydocker-compose down
+```
+
+### Container Details
+
+**API Container:**
+
+- Service name: `api`
+- Exposes the API server on port 8001
+- Built from the Dockerfile in the project
+
+
+**Database Container:**
+
+- Service name: `db`
+- Runs PostgreSQL
+- Exposes the database on port 5433
+
+
+**UI Container:**
+
+- Service name: `ui`
+- Runs the Streamlit web interface
+- Accessible on port 8502
+
+
+
+> [!NOTE]
+> - Make sure no other services are running on ports 8001, 5433, or 8502 on your local machine to avoid conflicts.
+> - The Docker Compose setup uses environment variables defined in the docker-compose.yml file. Ensure these match your configuration needs.
+> - For production deployments, consider using secrets management for sensitive information like database credentials.
