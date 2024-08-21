@@ -5,7 +5,10 @@ import json
 import os
 import time
 
-API_BASE_URL = "http://127.0.0.1:8000"
+if not os.environ.get("API_BASE_URL"):
+    API_BASE_URL = "http://127.0.0.1:8000"
+else:
+    API_BASE_URL = os.environ["API_BASE_URL"]
 
 def get_access_token():
     """

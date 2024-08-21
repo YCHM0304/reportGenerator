@@ -1,0 +1,49 @@
+version: '3.3'
+
+services:
+  db:
+    image: postgres:13
+    environment:
+      POSTGRES_DB: reportdb
+      POSTGRES_USER: reportuser
+      POSTGRES_PASSWORD: report_password
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./init.sql:/docker-entrypoint-initdb.d/init.sql
+    ports:
+      - "5433:5432"
+    networks:
+      - app-network
+
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile.api
+    environment:
+      DATABASE_URL: postgresql://reportuser:report_password@db/reportdb
+    depends_on:
+      - db
+    ports:
+      - "8001:8000"
+    networks:
+      - app-network
+
+  ui:
+    build:
+      context: .
+      dockerfile: Dockerfile.ui
+    environment:
+      API_BASE_URL: http://api:8000
+    depends_on:
+      - api
+    ports:
+      - "8502:8501"
+    networks:
+      - app-network
+
+networks:
+  app-network:
+    driver: bridge
+
+volumes:
+  postgres_data:
