@@ -64,6 +64,16 @@ def initialize_session_state():
             'azure_base': ''
         }
 
+    if 'generate_report_clicked' not in st.session_state:
+        st.session_state.generate_report_clicked = False
+        st.session_state.reprocess_report_clicked = False
+    if 'reprocess_command' not in st.session_state:
+        st.session_state.reprocess_command = ""
+    if 'reprocess_result' not in st.session_state:
+        st.session_state.reprocess_result = None
+    if 'reprocess_clicked' not in st.session_state:
+        st.session_state.reprocess_clicked = False
+
 def setup_api():
     """
     在側邊欄中創建 API 設置界面，允許用戶選擇 API 類型（OpenAI 或 Azure）
@@ -185,10 +195,6 @@ def generate_report(api_config):
     api_config (dict): API 配置信息
     """
 
-    if 'generate_report_clicked' not in st.session_state:
-        st.session_state.generate_report_clicked = False
-        st.session_state.reprocess_report_clicked = False
-
     st.header("Generate Report")
 
     theme = st.text_input("Enter the theme of the report")
@@ -220,7 +226,7 @@ def generate_report(api_config):
 
     col1, col2 = st.columns(2)
     with col1:
-        generate_report_clicked = st.button("Generate Report", key="generate_report", disabled=st.session_state.generate_report_clicked, use_container_width=True)
+        generate_report_clicked = st.button("Generate Report", key="generate_report", disabled=st.session_state.generate_report_clicked or st.session_state.reprocess_clicked, use_container_width=True)
     with col2:
         reset_all = st.button("Reset", key="reset_all", use_container_width=True, disabled=not st.session_state.generate_report_clicked)
     if generate_report_clicked:
@@ -292,19 +298,11 @@ def reprocess_content(api_config):
         st.warning("Please login first.")
         return
 
-    # 初始化 session state 變量
-    if 'reprocess_command' not in st.session_state:
-        st.session_state.reprocess_command = ""
-    if 'reprocess_result' not in st.session_state:
-        st.session_state.reprocess_result = None
-    if 'reprocess_clicked' not in st.session_state:
-        st.session_state.reprocess_clicked = False
-
     command = st.text_input("Enter the command for reprocess", value=st.session_state.reprocess_command)
 
     col1, col2 = st.columns(2)
     with col1:
-        reprocess_button = st.button("Reprocess Report", disabled=st.session_state.reprocess_clicked, use_container_width=True)
+        reprocess_button = st.button("Reprocess Report", disabled=st.session_state.reprocess_clicked or st.session_state.generate_report_clicked, use_container_width=True)
     with col2:
         reset_button = st.button("Reset", use_container_width=True, disabled=not st.session_state.reprocess_clicked)
 

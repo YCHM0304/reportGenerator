@@ -153,7 +153,7 @@ class ReportGenerator:
             return True
         return False
 
-    def generate_report(self, request: ReportRequest):
+    def generate_report(self, request: ReportRequest, reprocess: bool = False):
         self.report_config["theme"] = request.theme
         self.report_config["titles"] = request.titles.copy()
         self.report_config["links"] = request.links.copy()
@@ -209,12 +209,12 @@ class ReportGenerator:
         previous_result = ""
         for value in result.values():
             previous_result += value
-
-        result["內容摘要"] = self.summary.summarize_articles(
-            articles=previous_result,
-            format_prompt=f"將內容以{request.theme}為主題進行摘要，將用字換句話說，意思不變，不需要結論，不需要回應要求。",
-            summary_len=500
-        )
+        if not reprocess:
+            result["內容摘要"] = self.summary.summarize_articles(
+                articles=previous_result,
+                format_prompt=f"將內容以{request.theme}為主題進行摘要，將用字換句話說，意思不變，不需要結論，不需要回應要求。",
+                summary_len=500
+            )
         total_time = time.time() - start_time
         self.final_result = result.copy()
         return self.final_result, total_time
@@ -373,8 +373,8 @@ class ReportGenerator:
                                 titles={part: self.report_config["titles"][part]},
                                 links=self.report_config["links"],
                                 openai_config=self.openai_config
-                            )
-                        )[0]
+                            ), reprocess=True
+                        )[0][part]
                     elif modification == "n":
                         new_response = self.QA.ask_self(
                             prompt=f"""將此內容根據以下要求進行修改，若無法達成則不要修改任何內容直接輸出原始內容，不要亂撰寫內容:
@@ -429,6 +429,9 @@ class ReportGenerator:
         """
         更新報告中特定部分的內容並保存。
         """
+        if not self.load_result():
+            return False
+
         if part in self.final_result:
             self.final_result[part] = new_content
             self.save_result()
