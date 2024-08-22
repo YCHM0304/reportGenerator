@@ -135,6 +135,7 @@ class ReportGenerator:
         self.QA = akasha.Doc_QA(model=self.model, max_doc_len=8000)
         self.summary = akasha.Summary(chunk_size=1000, max_doc_len=7000)
 
+
     def load_openai(self) -> bool:
         # Delete old environment variables
         for key in ["OPENAI_API_KEY", "AZURE_API_BASE", "AZURE_API_KEY", "AZURE_API_TYPE", "AZURE_API_VERSION"]:
@@ -164,6 +165,8 @@ class ReportGenerator:
             raise HTTPException(status_code=400, detail="請提供OpenAI或Azure的API金鑰")
 
         result = {}
+        self.QA = akasha.Doc_QA(model=self.model, max_doc_len=8000)
+        self.summary = akasha.Summary(chunk_size=1000, max_doc_len=7000)
 
         def process_link(link, format_prompt):
             try:
@@ -254,6 +257,12 @@ class ReportGenerator:
     def reprocess_content(self, request: ReprocessContentRequest):
         if not self.final_result:
             raise HTTPException(status_code=400, detail="请先使用generate_report生成报告")
+        if not self.load_openai():
+            raise HTTPException(status_code=400, detail="請提供OpenAI或Azure的API金鑰")
+
+        self.QA = akasha.Doc_QA(model=self.model, max_doc_len=8000)
+        self.summary = akasha.Summary(chunk_size=1000, max_doc_len=7000)
+
         if self.final_result != {}:
             new_request = self.QA.ask_self(
                 prompt=f"""使用者輸入了以下修改要求:
