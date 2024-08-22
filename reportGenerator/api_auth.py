@@ -132,8 +132,6 @@ class ReportGenerator:
         }
         self.model = "openai:gpt-4"
         self.openai_config = {}
-        self.QA = akasha.Doc_QA(model=self.model, max_doc_len=8000)
-        self.summary = akasha.Summary(chunk_size=1000, max_doc_len=7000)
 
 
     def load_openai(self) -> bool:
@@ -256,7 +254,9 @@ class ReportGenerator:
 
     def reprocess_content(self, request: ReprocessContentRequest):
         if not self.final_result:
-            raise HTTPException(status_code=400, detail="请先使用generate_report生成报告")
+            raise HTTPException(status_code=400, detail="請先使用generate_report生成報告")
+
+        self.openai_config = request.openai_config or {}
         if not self.load_openai():
             raise HTTPException(status_code=400, detail="請提供OpenAI或Azure的API金鑰")
 
@@ -370,7 +370,7 @@ class ReportGenerator:
                         new_response = self.generate_report(
                             ReportRequest(
                                 theme=self.report_config["theme"],
-                                titles={part: [self.report_config["titles"][part]]},
+                                titles={part: self.report_config["titles"][part]},
                                 links=self.report_config["links"],
                                 openai_config=self.openai_config
                             )

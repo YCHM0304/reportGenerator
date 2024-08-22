@@ -279,7 +279,7 @@ def get_report():
         else:
             st.error(f"Error: {response.status_code} - {response.text}")
 
-def reprocess_content():
+def reprocess_content(api_config):
     """
     創建重新處理內容界面，允許用戶輸入命令來重新處理之前生成的報告內容。
     處理重新處理請求並顯示結果。提供選項保存修改後的內容。
@@ -324,7 +324,7 @@ def reprocess_content():
             st.session_state.reprocess_command = command
             data = {
                 "command": command,
-                "openai_config": {}  # 如果需要，添加 OpenAI 配置
+                "openai_config": api_config
             }
 
             headers = {"Authorization": f"Bearer {access_token}"}
@@ -382,7 +382,7 @@ def generate_and_reprocess_report(api_config):
     st.markdown("---")  # 分隔線
 
     # 重新處理內容部分
-    reprocess_content()
+    reprocess_content(api_config)
 
 # 登出
 # def logout():
