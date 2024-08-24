@@ -47,6 +47,8 @@ Base.metadata.create_all(engine)
 
 SessionLocal = sessionmaker(bind=engine)
 
+abort_flags = {}
+
 @contextmanager
 def get_db():
     db = SessionLocal()
@@ -181,8 +183,12 @@ class ReportGenerator:
                 return ""
 
         start_time = time.time()
+
+        abort_flags[self.username] = False
         with concurrent.futures.ThreadPoolExecutor(max_workers=5) as executor:
             for title, subtitle in request.titles.items():
+                if abort_flags[self.username]:
+                    raise HTTPException(status_code=400, detail="Report generation aborted")
                 format_prompt = f"以{request.theme}為主題，請你總結撰寫出與\"{title}\"相關的內容，其中需包含{subtitle}，不需要結論，不需要回應要求。"
 
                 future_to_link = {executor.submit(process_link, link, format_prompt): link for link in request.links}
@@ -263,6 +269,7 @@ class ReportGenerator:
         self.QA = akasha.Doc_QA(model=self.model, max_doc_len=8000)
         self.summary = akasha.Summary(chunk_size=1000, max_doc_len=7000)
 
+        abort_flags[self.username] = False
         if self.final_result != {}:
             new_request = self.QA.ask_self(
                 prompt=f"""使用者輸入了以下修改要求:
@@ -321,7 +328,8 @@ class ReportGenerator:
                 無法理解您的修改要求，請提供更多資訊
                 """,
                 info=[key for key in self.final_result.keys()],
-                model="openai:gpt-4"
+                model="openai:gpt-4",
+                verbose=True
             )
 
             try:
@@ -360,13 +368,16 @@ class ReportGenerator:
                         unknown
                         """,
                         info=previous_context,
-                        model="openai:gpt-4"
+                        model="openai:gpt-4",
+                        verbose=True
                     )
                     while modification == "unknown":
                         modification = input("無法判斷是否需要重新爬取資料，請問是否需要從原文重新爬取資料? (y/n)\n")
                         if modification != "y" and modification != "n":
                             modification = "unknown"
                     if modification == "y":
+                        if abort_flags[self.username]:
+                            raise HTTPException(status_code=400, detail="Report reprocess aborted")
                         new_response = self.generate_report(
                             ReportRequest(
                                 theme=self.report_config["theme"],
@@ -376,6 +387,8 @@ class ReportGenerator:
                             ), reprocess=True
                         )[0][part]
                     elif modification == "n":
+                        if abort_flags[self.username]:
+                            raise HTTPException(status_code=400, detail="Report reprocess aborted")
                         new_response = self.QA.ask_self(
                             prompt=f"""將此內容根據以下要求進行修改，若無法達成則不要修改任何內容直接輸出原始內容，不要亂撰寫內容:
                             ----------------
@@ -404,7 +417,8 @@ class ReportGenerator:
                             台灣的電池產業發展迅速，主要市場區域包括美洲和歐洲。
                             """,
                             info=previous_context,
-                            model="openai:gpt-4"
+                            model="openai:gpt-4",
+                            verbose=True
                         )
                     else:
                         raise HTTPException(status_code=400, detail="無法確定是否需要重新爬取資料")
@@ -482,6 +496,11 @@ async def generate_report(request: ReportRequest, generator: ReportGenerator = D
     result, total_time = generator.generate_report(request)
     generator.save_result()
     return {"result": result, "total_time": total_time}
+
+@app.post("/abort_process")
+async def abort_process(generator: ReportGenerator = Depends(get_report_generator)):
+    abort_flags[generator.username] = True
+    return {"message": "Process abort requested"}
 
 @app.get("/check_result")
 async def check_result(generator: ReportGenerator = Depends(get_report_generator)):

@@ -228,11 +228,22 @@ def generate_report(api_config):
     with col1:
         generate_report_clicked = st.button("Generate Report", key="generate_report", disabled=st.session_state.generate_report_clicked or st.session_state.reprocess_clicked, use_container_width=True)
     with col2:
-        reset_all = st.button("Reset", key="reset_all", use_container_width=True, disabled=not st.session_state.generate_report_clicked)
+        reset = st.button("Reset", key="reset_all", use_container_width=True, disabled=not st.session_state.generate_report_clicked)
     if generate_report_clicked:
         st.session_state.generate_report_clicked = True
         st.rerun()
-    if reset_all:
+    if reset:
+        if st.session_state.generate_report_clicked:
+            # 发送中止请求到API
+            access_token = get_access_token()
+            headers = {"Authorization": f"Bearer {access_token}"} if access_token else {}
+            with st.spinner("Aborting generating report..."):
+                response = requests.post(f"{API_BASE_URL}/abort_process", headers=headers)
+                if response.status_code == 200:
+                    st.success("Report generation aborted.")
+                else:
+                    st.error(f"Error aborting process: {response.status_code} - {response.text}")
+
         reset_states()
         st.rerun()
 
@@ -277,7 +288,7 @@ def get_report():
         return
 
     if st.button("Get Report", disabled=st.session_state.generate_report_clicked or st.session_state.reprocess_report_clicked):
-        headers = {"Authorization": f"Bearer {access_token}"}
+        headers = {"Authorization": f"Bearer {access_token}"} if access_token else {}
         response = requests.get(f"{API_BASE_URL}/get_report", headers=headers)
         if response.status_code == 200:
             result = response.json()
@@ -311,6 +322,17 @@ def reprocess_content(api_config):
         st.rerun()
 
     if reset_button:
+        if st.session_state.reprocess_clicked:
+            # 發送中止請求到API
+            access_token = get_access_token()
+            headers = {"Authorization": f"Bearer {access_token}"} if access_token else {}
+            with st.spinner("Aborting reprocessing report..."):
+                response = requests.post(f"{API_BASE_URL}/abort_process", headers=headers)
+                if response.status_code == 200:
+                    st.success("Report reprocessing aborted.")
+                else:
+                    st.error(f"Error aborting process: {response.status_code} - {response.text}")
+
         reset_states()
         st.rerun()
 
@@ -325,7 +347,7 @@ def reprocess_content(api_config):
                 "openai_config": api_config
             }
 
-            headers = {"Authorization": f"Bearer {access_token}"}
+            headers = {"Authorization": f"Bearer {access_token}"} if access_token else {}
             with st.spinner("Reprocessing report..."):
                 response = requests.post(f"{API_BASE_URL}/reprocess_content", json=data, headers=headers)
                 if response.status_code == 200:
@@ -334,7 +356,9 @@ def reprocess_content(api_config):
                 else:
                     st.error(f"Error: {response.status_code} - {response.text}")
                     st.session_state.reprocess_result = None
+        time.sleep(2)
         st.session_state.reprocess_clicked = False
+        st.rerun()
 
     if st.session_state.reprocess_result:
         result = st.session_state.reprocess_result
@@ -349,7 +373,7 @@ def reprocess_content(api_config):
                 "part": result['part'],
                 "new_content": result['modified_content']
             }
-            headers = {"Authorization": f"Bearer {access_token}"}
+            headers = {"Authorization": f"Bearer {access_token}"} if access_token else {}
             save_response = requests.post(f"{API_BASE_URL}/save_reprocessed_content", json=save_data, headers=headers)
             if save_response.status_code == 200:
                 st.success("Changes saved successfully.")
@@ -373,6 +397,19 @@ def generate_and_reprocess_report(api_config):
         st.session_state.reprocess_clicked = False
         st.session_state.current_page = 'generate_and_reprocess_report'
     st.header("Generate and Reprocess Report")
+
+    access_token = get_access_token()
+    if not access_token:
+        st.warning("Please login first.")
+        return
+    headers = {"Authorization": f"Bearer {access_token}"} if access_token else {}
+    check_report_response = requests.get(f"{API_BASE_URL}/check_result", headers=headers)
+    if check_report_response.status_code == 200:
+        report_exists = check_report_response.json()["result"]
+        if report_exists:
+            st.success("Generated report found. To check the report, go to 'Get Report' page.")
+    else:
+        st.error("Failed to check for existing report. Please try again.")
 
     # 生成報告部分
     generate_report(api_config)
