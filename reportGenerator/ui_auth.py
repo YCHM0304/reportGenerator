@@ -73,6 +73,8 @@ def initialize_session_state():
         st.session_state.reprocess_result = None
     if 'reprocess_clicked' not in st.session_state:
         st.session_state.reprocess_clicked = False
+    if 'generate_recommend_titles_clicked' not in st.session_state:
+        st.session_state.generate_recommend_titles_clicked = False
 
 def setup_api():
     """
@@ -169,6 +171,37 @@ def login_user():
         else:
             st.error(f"Login failed: {response.text}")
 
+def generate_recommend_titles(api_config, theme):
+    data = {
+        "theme": theme,
+        "titles": {},
+        "links": [],
+        "openai_config": api_config
+    }
+
+    access_token = get_access_token()
+    headers = {"Authorization": f"Bearer {access_token}"} if access_token else {}
+
+    with st.spinner("Generating recommended titles..."):
+        response = requests.post(f"{API_BASE_URL}/generate_recommend_titles", json=data, headers=headers)
+        if response.status_code == 200:
+            result = response.json()
+            st.success("Recommended titles generated successfully.")
+            try:
+                # 嘗試解析返回的 JSON 字符串
+                titles = json.loads(result["result"])
+                if isinstance(titles, dict) and "段落標題" in titles and "段落次標題" in titles:
+                    return titles
+                else:
+                    st.error("Received data is not in the expected format.")
+                    return None
+            except json.JSONDecodeError:
+                st.error("Failed to parse the received data.")
+                return None
+        else:
+            st.error(f"Error: {response.status_code} - {response.text}")
+            return None
+
 # 重置狀態
 def reset_states():
     """
@@ -177,6 +210,8 @@ def reset_states():
     """
     st.session_state.current_page = 'generate_and_reprocess_report'
     st.session_state.generate_report_clicked = False
+    st.session_state.reprocess_report_clicked = False
+    st.session_state.recommended_titles = None
     st.session_state.reprocess_clicked = False
     st.session_state.reprocess_command = ""
     st.session_state.reprocess_result = None
@@ -187,37 +222,63 @@ def reset_states():
 
 # 生成報告
 def generate_report(api_config):
-    """
-    創建報告生成界面，允許用戶輸入報告主題、標題和鏈接。
-    處理報告生成請求並顯示結果。
-
-    參數:
-    api_config (dict): API 配置信息
-    """
-
     st.header("Generate Report")
 
     theme = st.text_input("Enter the theme of the report")
 
-    titles_dict = {}
+    if 'recommended_titles' not in st.session_state:
+        st.session_state.recommended_titles = None
 
     if 'num_titles' not in st.session_state:
         st.session_state.num_titles = 1
 
     col1, col2 = st.columns(2)
     with col1:
+        generate_recommend_titles_clicked = st.button("Generate Recommended Titles", disabled=st.session_state.generate_recommend_titles_clicked or st.session_state.generate_report_clicked or st.session_state.reprocess_clicked)
+
+    with col2:
+        if st.button("Reset Titles"):
+            st.session_state.recommended_titles = None
+            st.session_state.num_titles = 1
+
+    if generate_recommend_titles_clicked:
+            st.session_state.generate_recommend_titles_clicked = True
+            st.rerun()
+    if st.session_state.generate_recommend_titles_clicked:
+        if theme:
+            st.session_state.recommended_titles = generate_recommend_titles(api_config, theme)
+            if st.session_state.recommended_titles:
+                    st.session_state.num_titles = len(st.session_state.recommended_titles["段落標題"])
+        else:
+            st.error("Please enter a theme before generating titles.")
+        time.sleep(2)
+        st.session_state.generate_recommend_titles_clicked = False
+        st.rerun()
+
+    col1, col2 = st.columns(2)
+    with col1:
         if st.button("Add Title"):
             st.session_state.num_titles += 1
     with col2:
-        if st.button("Reset Titles"):
-            st.session_state.num_titles = 1
+        if st.button("Remove Title") and st.session_state.num_titles > 1:
+            st.session_state.num_titles -= 1
+
+    titles_dict = {}
 
     for i in range(st.session_state.num_titles):
         col1, col2 = st.columns(2)
         with col1:
-            title = st.text_input(f"Title {i+1}", key=f"title_{i}")
+            title_key = f"title_{i}"
+            default_title = ""
+            if st.session_state.recommended_titles and i < len(st.session_state.recommended_titles["段落標題"]):
+                default_title = st.session_state.recommended_titles["段落標題"][i]
+            title = st.text_input(f"Title {i+1}", key=title_key, value=default_title)
         with col2:
-            subtitles = st.text_area(f"Subtitles for Title {i+1} (one per line)", key=f"subtitles_{i}")
+            subtitles_key = f"subtitles_{i}"
+            default_subtitles = ""
+            if st.session_state.recommended_titles and i < len(st.session_state.recommended_titles["段落次標題"]):
+                default_subtitles = "\n".join(st.session_state.recommended_titles["段落次標題"][i])
+            subtitles = st.text_area(f"Subtitles for Title {i+1} (one per line)", key=subtitles_key, value=default_subtitles)
         if title and subtitles:
             titles_dict[title] = subtitles.split('\n')
 
@@ -228,13 +289,14 @@ def generate_report(api_config):
     with col1:
         generate_report_clicked = st.button("Generate Report", key="generate_report", disabled=st.session_state.generate_report_clicked or st.session_state.reprocess_clicked, use_container_width=True)
     with col2:
-        reset = st.button("Reset", key="reset_all", use_container_width=True, disabled=not st.session_state.generate_report_clicked)
+        reset = st.button("Reset All", key="reset_all", use_container_width=True, disabled=not st.session_state.generate_report_clicked)
+
     if generate_report_clicked:
         st.session_state.generate_report_clicked = True
         st.rerun()
     if reset:
         if st.session_state.generate_report_clicked:
-            # 发送中止请求到API
+            # Send abort request to API
             access_token = get_access_token()
             headers = {"Authorization": f"Bearer {access_token}"} if access_token else {}
             with st.spinner("Aborting generating report..."):
@@ -245,6 +307,7 @@ def generate_report(api_config):
                     st.error(f"Error aborting process: {response.status_code} - {response.text}")
 
         reset_states()
+        st.session_state.recommended_titles = None
         st.rerun()
 
     if st.session_state.generate_report_clicked:
@@ -392,9 +455,7 @@ def generate_and_reprocess_report(api_config):
     if 'current_page' not in st.session_state:
         st.session_state.current_page = 'generate_and_reprocess_report'
     elif st.session_state.current_page != 'generate_and_reprocess_report':
-        st.session_state.num_titles = 1
-        st.session_state.generate_report_clicked = False
-        st.session_state.reprocess_clicked = False
+        reset_states()
         st.session_state.current_page = 'generate_and_reprocess_report'
     st.header("Generate and Reprocess Report")
 

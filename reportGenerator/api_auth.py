@@ -224,6 +224,40 @@ class ReportGenerator:
         total_time = time.time() - start_time
         self.final_result = result.copy()
         return self.final_result, total_time
+    def generate_recommend_titles(self, request: ReportRequest):
+        theme = request.theme
+        self.openai_config = request.openai_config or {}
+        if not self.load_openai():
+            raise HTTPException(status_code=400, detail="請提供OpenAI或Azure的API金鑰")
+        self.QA = akasha.Doc_QA(model=self.model, max_doc_len=8000)
+        formatter = akasha.prompts.JSON_formatter_list(names=["段落標題", "段落次標題"], types=["list", "list"], descriptions=["每段段落標題", "每段多個段落次標題"])
+        JSON_prompt = akasha.prompts.JSON_formatter(formatter)
+        try:
+            generated_titles = self.QA.ask_self(
+                system_prompt=JSON_prompt,
+                prompt=f"我想要寫一份報告，請以{theme}主題，幫我制定四個或五個段落標題，其中每個段落標題都有其各自的次標題，請參考以下範例，並回答。",
+                info="""
+                    範例:
+                    [給定主題]
+                    電池產業的發展趨勢
+                    [回應範例]
+                    全球電池市場概況
+
+                    市場規模與增長趨勢
+                    主要市場區域分析
+                    主要企業概況
+
+                    技術發展趨勢
+
+                    鋰離子電池技術進展
+                    固態電池技術
+                    其他新興電池技術
+                """,
+                model="openai:gpt-4"
+            )
+        except Exception as e:
+            raise HTTPException(status_code=400, detail=str(e))
+        return generated_titles
 
     def save_result(self):
         with get_db() as db:
@@ -496,6 +530,11 @@ async def generate_report(request: ReportRequest, generator: ReportGenerator = D
     result, total_time = generator.generate_report(request)
     generator.save_result()
     return {"result": result, "total_time": total_time}
+
+@app.post("/generate_recommend_titles")
+async def generate_recommend_titles(request: ReportRequest, generator: ReportGenerator = Depends(get_report_generator)):
+    result = generator.generate_recommend_titles(request)
+    return {"result": result}
 
 @app.post("/abort_process")
 async def abort_process(generator: ReportGenerator = Depends(get_report_generator)):
