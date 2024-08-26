@@ -237,7 +237,7 @@ def generate_report(api_config):
         generate_recommend_titles_clicked = st.button("Generate Recommended Titles", disabled=st.session_state.generate_recommend_titles_clicked or st.session_state.generate_report_clicked or st.session_state.reprocess_clicked)
 
     with col2:
-        if st.button("Reset Titles"):
+        if st.button("Reset Titles", disabled=st.session_state.generate_recommend_titles_clicked):
             st.session_state.recommended_titles = None
             st.session_state.num_titles = 1
 
