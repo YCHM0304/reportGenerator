@@ -289,23 +289,12 @@ def generate_report(api_config):
     with col1:
         generate_report_clicked = st.button("Generate Report", key="generate_report", disabled=st.session_state.generate_report_clicked or st.session_state.reprocess_clicked, use_container_width=True)
     with col2:
-        reset = st.button("Reset All", key="reset_all", use_container_width=True, disabled=not st.session_state.generate_report_clicked)
+        reset = st.button("Reset All", key="reset_all", use_container_width=True, disabled=st.session_state.generate_report_clicked or st.session_state.reprocess_clicked)
 
     if generate_report_clicked:
         st.session_state.generate_report_clicked = True
         st.rerun()
     if reset:
-        if st.session_state.generate_report_clicked:
-            # Send abort request to API
-            access_token = get_access_token()
-            headers = {"Authorization": f"Bearer {access_token}"} if access_token else {}
-            with st.spinner("Aborting generating report..."):
-                response = requests.post(f"{API_BASE_URL}/abort_process", headers=headers)
-                if response.status_code == 200:
-                    st.success("Report generation aborted.")
-                else:
-                    st.error(f"Error aborting process: {response.status_code} - {response.text}")
-
         reset_states()
         st.session_state.recommended_titles = None
         st.rerun()
@@ -378,24 +367,13 @@ def reprocess_content(api_config):
     with col1:
         reprocess_button = st.button("Reprocess Report", disabled=st.session_state.reprocess_clicked or st.session_state.generate_report_clicked, use_container_width=True)
     with col2:
-        reset_button = st.button("Reset", use_container_width=True, disabled=not st.session_state.reprocess_clicked)
+        reset_button = st.button("Reset", use_container_width=True, disabled=st.session_state.reprocess_clicked or st.session_state.generate_report_clicked)
 
     if reprocess_button:
         st.session_state.reprocess_clicked = True
         st.rerun()
 
     if reset_button:
-        if st.session_state.reprocess_clicked:
-            # 發送中止請求到API
-            access_token = get_access_token()
-            headers = {"Authorization": f"Bearer {access_token}"} if access_token else {}
-            with st.spinner("Aborting reprocessing report..."):
-                response = requests.post(f"{API_BASE_URL}/abort_process", headers=headers)
-                if response.status_code == 200:
-                    st.success("Report reprocessing aborted.")
-                else:
-                    st.error(f"Error aborting process: {response.status_code} - {response.text}")
-
         reset_states()
         st.rerun()
 
