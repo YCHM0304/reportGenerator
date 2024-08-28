@@ -21,12 +21,15 @@ services:
       dockerfile: Dockerfile.api
     environment:
       DATABASE_URL: postgresql://reportuser:report_password@db/reportdb
+      LOG_PATH: /app/logs/api.log
     depends_on:
       - db
     ports:
       - "8001:8000"
     networks:
       - app-network
+    volumes:
+      - ./logs:/app/logs
 
   ui:
     build:

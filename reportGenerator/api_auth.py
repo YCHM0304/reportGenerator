@@ -21,16 +21,16 @@ from logging.handlers import RotatingFileHandler
 
 # Setup logging
 def setup_logging():
-    log_dir = "logs"
+    log_path = os.environ.get('LOG_PATH', '/app/logs/fastapi_backend.log')
+    log_dir = os.path.dirname(log_path)
+
     if not os.path.exists(log_dir):
         os.makedirs(log_dir)
-
-    log_file = os.path.join(log_dir, "fastapi_backend.log")
 
     logger = logging.getLogger("fastapi_backend")
     logger.setLevel(logging.INFO)
 
-    file_handler = RotatingFileHandler(log_file, maxBytes=1024 * 1024, backupCount=5)
+    file_handler = RotatingFileHandler(log_path, maxBytes=1024 * 1024, backupCount=5)
     file_handler.setFormatter(logging.Formatter('%(asctime)s - %(levelname)s - %(message)s'))
 
     logger.addHandler(file_handler)
