@@ -16,6 +16,28 @@ from contextlib import contextmanager
 from passlib.context import CryptContext
 import jwt
 from datetime import datetime, timedelta, timezone
+import logging
+from logging.handlers import RotatingFileHandler
+
+# Setup logging
+def setup_logging():
+    log_dir = "logs"
+    if not os.path.exists(log_dir):
+        os.makedirs(log_dir)
+
+    log_file = os.path.join(log_dir, "fastapi_backend.log")
+
+    logger = logging.getLogger("fastapi_backend")
+    logger.setLevel(logging.INFO)
+
+    file_handler = RotatingFileHandler(log_file, maxBytes=1024 * 1024, backupCount=5)
+    file_handler.setFormatter(logging.Formatter('%(asctime)s - %(levelname)s - %(message)s'))
+
+    logger.addHandler(file_handler)
+
+    return logger
+
+logger = setup_logging()
 
 # Database setup
 DATABASE_URL = os.getenv("DATABASE_URL", "postgresql://reportuser:report_password@localhost/reportdb")
@@ -164,7 +186,7 @@ class ReportGenerator:
 
         result = {}
         self.QA = akasha.Doc_QA(model=self.model, max_doc_len=8000)
-        self.summary = akasha.Summary(chunk_size=1000, max_doc_len=7000)
+        self.summary = akasha.Summary(chunk_size=1000, max_doc_len=6000)
 
         def process_link(link, format_prompt):
             try:
@@ -481,9 +503,11 @@ user_sessions: Dict[str, ReportGenerator] = {}
 
 @app.post("/register", response_model=Token)
 async def register_user(user: UserCreate):
+    logger.info(f"Registration attempt for user: {user.username}")
     with get_db() as db:
         db_user = db.query(User).filter(User.username == user.username).first()
         if db_user:
+            logger.warning(f"Registration failed: Username {user.username} already exists")
             raise HTTPException(status_code=400, detail="Username already registered")
         hashed_password = get_password_hash(user.password)
         new_user = User(username=user.username, hashed_password=hashed_password)
@@ -493,12 +517,15 @@ async def register_user(user: UserCreate):
     access_token = create_access_token(
         data={"sub": user.username}, expires_delta=access_token_expires
     )
+    logger.info(f"User {user.username} registered successfully")
     return {"access_token": access_token, "token_type": "bearer"}
 
 @app.post("/token", response_model=Token)
 async def login_for_access_token(form_data: OAuth2PasswordRequestForm = Depends()):
+    logger.info(f"Login attempt for user: {form_data.username}")
     user = authenticate_user(form_data.username, form_data.password)
     if not user:
+        logger.warning(f"Login failed: Incorrect username or password for {form_data.username}")
         raise HTTPException(
             status_code=401,
             detail="Incorrect username or password",
@@ -508,6 +535,7 @@ async def login_for_access_token(form_data: OAuth2PasswordRequestForm = Depends(
     access_token = create_access_token(
         data={"sub": user.username}, expires_delta=access_token_expires
     )
+    logger.info(f"User {form_data.username} logged in successfully")
     return {"access_token": access_token, "token_type": "bearer"}
 
 def get_report_generator(current_user: User = Depends(get_current_user)):
@@ -517,13 +545,17 @@ def get_report_generator(current_user: User = Depends(get_current_user)):
 
 @app.post("/generate_report")
 async def generate_report(request: ReportRequest, generator: ReportGenerator = Depends(get_report_generator)):
+    logger.info(f"Generating report for user: {generator.username}")
     result, total_time = generator.generate_report(request)
     generator.save_result()
+    logger.info(f"Report generated for user: {generator.username}. Total time: {total_time} seconds")
     return {"result": result, "total_time": total_time}
 
 @app.post("/generate_recommend_titles")
 async def generate_recommend_titles(request: ReportRequest, generator: ReportGenerator = Depends(get_report_generator)):
+    logger.info(f"Generating recommended titles for user: {generator.username}")
     result = generator.generate_recommend_titles(request)
+    logger.info(f"Recommended titles generated for user: {generator.username}")
     return {"result": result}
 
 @app.get("/check_result")
@@ -532,10 +564,13 @@ async def check_result(generator: ReportGenerator = Depends(get_report_generator
 
 @app.get("/get_report")
 async def get_report(generator: ReportGenerator = Depends(get_report_generator)):
+    logger.info(f"Retrieving report for user: {generator.username}")
     if generator.load_result():
         result = generator.final_result
+        logger.info(f"Report retrieved for user: {generator.username}")
         return {"result": result}
     else:
+        logger.error(f"Report not found for user: {generator.username}")
         raise HTTPException(status_code=400, detail="報告尚未生成")
 
 # Add a new API endpoint
@@ -545,15 +580,20 @@ async def save_reprocessed_content(
     new_content: str = Body(...),
     generator: ReportGenerator = Depends(get_report_generator)
 ):
+    logger.info(f"Updating content for user: {generator.username}")
     if generator.update_content(part, new_content):
+        logger.info(f"Content updated and saved for user: {generator.username}")
         return {"result": "Content updated and saved successfully"}
     else:
+        logger.error(f"Failed to update content for user: {generator.username}")
         raise HTTPException(status_code=400, detail="無法更新指定的部分")
 
 @app.post("/reprocess_content")
 async def reprocess_content(request: ReprocessContentRequest, generator: ReportGenerator = Depends(get_report_generator)):
+    logger.info(f"Reprocessing content for user: {generator.username}")
     generator.load_result()
     result = generator.reprocess_content(request)
+    logger.info(f"Content reprocessed for user: {generator.username}")
     return {"result": result}
 
 @app.delete("/delete_report")

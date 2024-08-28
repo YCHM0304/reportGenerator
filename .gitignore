@@ -6,3 +6,4 @@ command.txt
 result.json
 tests/*
 *.txt
+logs/*
