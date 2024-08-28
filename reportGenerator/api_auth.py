@@ -17,7 +17,11 @@ from passlib.context import CryptContext
 import jwt
 from datetime import datetime, timedelta, timezone
 import logging
-from logging.handlers import RotatingFileHandler
+from logging.handlers import TimedRotatingFileHandler
+
+def custom_namer(default_name):
+    base_filename, ext, date = default_name.split(".")
+    return f"{base_filename}.{date}.{ext}"
 
 # Setup logging
 def setup_logging():
@@ -30,7 +34,14 @@ def setup_logging():
     logger = logging.getLogger("fastapi_backend")
     logger.setLevel(logging.INFO)
 
-    file_handler = RotatingFileHandler(log_path, maxBytes=1024 * 1024, backupCount=5)
+    file_handler = TimedRotatingFileHandler(
+        log_path,
+        when="midnight",
+        interval=1,
+        backupCount=30,
+        encoding='utf-8'
+    )
+    file_handler.namer = custom_namer
     file_handler.setFormatter(logging.Formatter('%(asctime)s - %(levelname)s - %(message)s'))
 
     logger.addHandler(file_handler)

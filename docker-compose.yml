@@ -21,7 +21,8 @@ services:
       dockerfile: Dockerfile.api
     environment:
       DATABASE_URL: postgresql://reportuser:report_password@db/reportdb
-      LOG_PATH: /app/logs/api.log
+      LOG_PATH: /app/logs/fastapi_backend.log
+      LOG_LEVEL: INFO
     depends_on:
       - db
     ports:
