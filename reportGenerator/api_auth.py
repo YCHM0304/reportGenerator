@@ -214,7 +214,7 @@ class ReportGenerator:
 
         result = {}
         self.QA = akasha.Doc_QA(model=self.model, max_doc_len=8000)
-        self.summary = akasha.Summary(chunk_size=1000, max_doc_len=8000, model=self.model)
+        self.summary = akasha.Summary(chunk_size=1000, max_doc_len=7000)
 
         def process_link(link, format_prompt):
             try:
@@ -360,7 +360,7 @@ class ReportGenerator:
             raise HTTPException(status_code=400, detail="請提供OpenAI或Azure的API金鑰")
 
         self.QA = akasha.Doc_QA(model=self.model, max_doc_len=8000)
-        self.summary = akasha.Summary(chunk_size=1000, max_doc_len=8000, model=self.model)
+        self.summary = akasha.Summary(chunk_size=1000, max_doc_len=7000)
 
         if self.final_result != {}:
             new_request = self.QA.ask_self(

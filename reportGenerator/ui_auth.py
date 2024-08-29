@@ -450,16 +450,20 @@ def generate_and_reprocess_report(api_config):
     if 'report_checked' not in st.session_state:
         st.session_state.report_checked = False
 
+    if 'report_exists' not in st.session_state:
+        st.session_state.report_exists = False
+
     if not st.session_state.report_checked:
         headers = {"Authorization": f"Bearer {access_token}"} if access_token else {}
         check_report_response = requests.get(f"{API_BASE_URL}/check_result", headers=headers)
         if check_report_response.status_code == 200:
-            report_exists = check_report_response.json()["result"]
-            if report_exists:
-                st.success("Generated report found. To check the report, go to 'Get Report' page.")
+            st.session_state.report_exists = check_report_response.json()["result"]
         else:
             st.error("Failed to check for existing report. Please try again.")
         st.session_state.report_checked = True
+
+    if st.session_state.report_exists:
+        st.success("Generated report found. To check the report, go to 'Get Report' page.")
 
     # 生成報告部分``
     generate_report(api_config)
@@ -498,6 +502,9 @@ def main():
         if st.sidebar.button("Logout"):
             clear_access_token()
             clear_api_config()
+            # 清除所有相關的 session state 變量
+            for key in list(st.session_state.keys()):
+                del st.session_state[key]
             st.success("You have been logged out successfully. API configuration has been cleared.")
             st.rerun()
 
