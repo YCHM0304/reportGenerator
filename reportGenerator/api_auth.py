@@ -203,7 +203,7 @@ class ReportGenerator:
             return True
         return False
 
-    def generate_report(self, request: ReportRequest, reprocess: bool = False):
+    def generate_report(self, request: ReportRequest, reprocess: bool = False, more_info: str = None):
         self.report_config["theme"] = request.theme
         self.report_config["titles"] = request.titles.copy()
         self.report_config["links"] = request.links.copy()
@@ -237,7 +237,7 @@ class ReportGenerator:
 
         with concurrent.futures.ThreadPoolExecutor(max_workers=5) as executor:
             for title, subtitle in request.titles.items():
-                format_prompt = f"以{request.theme}為主題，請你總結撰寫出與\"{title}\"相關的內容，其中需包含{subtitle}，不需要結論，不需要回應要求。"
+                format_prompt = f"以{request.theme}為主題，請你總結撰寫出與\"{title}\"相關的內容，其中需包含{subtitle}，不需要結論，不需要回應要求。" + f"另外，{more_info}" if reprocess else ""
                 logger.debug(f"Format prompt for title '{title}': {format_prompt}")
 
                 future_to_link = {executor.submit(process_link, link, format_prompt): link for link in request.links}
@@ -476,8 +476,17 @@ class ReportGenerator:
                                 titles={part: self.report_config["titles"][part]},
                                 links=self.report_config["links"],
                                 openai_config=self.openai_config
-                            ), reprocess=True
+                            ),
+                            reprocess=True,
+                            more_info=mod_command
                         )[0][part]
+
+                        new_response = self.QA.ask_self(
+                            prompt=f"將給定的兩個內容進行比較，將兩者不同的部分進行融合，形成一個新的內容，不需要結論，不需要回應要求。",
+                            info=previous_context + "\n---\n" + new_response,
+                            model=self.model,
+                            verbose=True
+                        )
                     elif modification == "n":
                         new_response = self.QA.ask_self(
                             prompt=f"""將此內容根據以下要求進行修改，若無法達成則不要修改任何內容直接輸出原始內容，不要亂撰寫內容:
