@@ -424,9 +424,9 @@ class ReportGenerator:
             )
 
             try:
-                logger.debug(f"Reprocessing part: {part}, with command: {mod_command}")
                 part = new_request.split("修改部分: ")[1].split("\n修改內容: ")[0]
                 mod_command = new_request.split("修改部分: ")[1].split("\n修改內容: ")[1]
+                logger.debug(f"Reprocessing part: {part}, with command: {mod_command}")
                 if part in self.final_result:
                     previous_context = self.final_result[part]
                     modification = self.QA.ask_self(
@@ -513,11 +513,13 @@ class ReportGenerator:
                         logger.error(f"Part not found: {part}")
                         raise HTTPException(status_code=400, detail="無法確定是否需要重新爬取資料")
 
-                    return {
+                    modificatiom_result = {
                         "original_content": previous_context,
                         "modified_content": new_response,
                         "part": part
                     }
+                    logger.debug(f"Modification result: {modificatiom_result}")
+                    return modificatiom_result
                 else:
                     raise HTTPException(status_code=400, detail=f"未找到指定的部分: {part}")
             except Exception as e:

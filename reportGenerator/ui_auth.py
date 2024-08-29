@@ -323,6 +323,7 @@ def generate_report(api_config):
                     st.error(f"Error: {response.status_code} - {response.text}")
         time.sleep(2)
         st.session_state.generate_report_clicked = False
+        st.session_state.report_checked = False
         st.rerun()
 
 # 取得報告
@@ -441,16 +442,25 @@ def generate_and_reprocess_report(api_config):
     if not access_token:
         st.warning("Please login first.")
         return
-    headers = {"Authorization": f"Bearer {access_token}"} if access_token else {}
-    check_report_response = requests.get(f"{API_BASE_URL}/check_result", headers=headers)
-    if check_report_response.status_code == 200:
-        report_exists = check_report_response.json()["result"]
-        if report_exists:
-            st.success("Generated report found. To check the report, go to 'Get Report' page.")
-    else:
-        st.error("Failed to check for existing report. Please try again.")
+    if not access_token:
+        st.warning("Please login first.")
+        return
 
-    # 生成報告部分
+    if 'report_checked' not in st.session_state:
+        st.session_state.report_checked = False
+
+    if not st.session_state.report_checked:
+        headers = {"Authorization": f"Bearer {access_token}"} if access_token else {}
+        check_report_response = requests.get(f"{API_BASE_URL}/check_result", headers=headers)
+        if check_report_response.status_code == 200:
+            report_exists = check_report_response.json()["result"]
+            if report_exists:
+                st.success("Generated report found. To check the report, go to 'Get Report' page.")
+        else:
+            st.error("Failed to check for existing report. Please try again.")
+        st.session_state.report_checked = True
+
+    # 生成報告部分``
     generate_report(api_config)
 
     st.markdown("---")  # 分隔線
