@@ -214,7 +214,7 @@ class ReportGenerator:
 
         result = {}
         self.QA = akasha.Doc_QA(model=self.model, max_doc_len=8000)
-        self.summary = akasha.Summary(chunk_size=1000, max_doc_len=7000)
+        self.summary = akasha.Summary(chunk_size=1000, max_doc_len=2000)
 
         def process_link(link, format_prompt):
             try:
