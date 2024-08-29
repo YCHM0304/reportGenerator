@@ -23,8 +23,7 @@ def custom_namer(default_name):
     base_filename, ext, date = default_name.split(".")
     return f"{base_filename}.{date}.{ext}"
 
-# Setup logging
-def setup_logging():
+def setup_logging(tz_offset=8):  # 默認為 UTC+8（台北時間）
     log_path = os.environ.get('LOG_PATH', '/app/logs/fastapi_backend.log')
     log_dir = os.path.dirname(log_path)
 
@@ -32,7 +31,7 @@ def setup_logging():
         os.makedirs(log_dir)
 
     logger = logging.getLogger("fastapi_backend")
-    logger.setLevel(logging.INFO)
+    logger.setLevel(logging.DEBUG)
 
     file_handler = TimedRotatingFileHandler(
         log_path,
@@ -42,7 +41,21 @@ def setup_logging():
         encoding='utf-8'
     )
     file_handler.namer = custom_namer
-    file_handler.setFormatter(logging.Formatter('%(asctime)s - %(levelname)s - %(message)s'))
+
+    class TimezoneFormatter(logging.Formatter):
+        def converter(self, timestamp):
+            return datetime.fromtimestamp(timestamp, timezone(timedelta(hours=tz_offset)))
+
+        def formatTime(self, record, datefmt=None):
+            dt = self.converter(record.created)
+            if datefmt:
+                s = dt.strftime(datefmt)
+            else:
+                s = dt.isoformat(timespec='milliseconds')
+            return s
+
+    formatter = TimezoneFormatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+    file_handler.setFormatter(formatter)
 
     logger.addHandler(file_handler)
 
@@ -145,12 +158,15 @@ async def get_current_user(token: str = Depends(oauth2_scheme)):
         payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
         username: str = payload.get("sub")
         if username is None:
+            logger.error("Invalid token: Missing username")
             raise credentials_exception
     except jwt.PyJWTError:
+        logger.error("Invalid token: PyJWTError")
         raise credentials_exception
     with get_db() as db:
         user = db.query(User).filter(User.username == username).first()
     if user is None:
+        logger.error("Invalid token: User not found")
         raise credentials_exception
     return user
 
@@ -197,7 +213,7 @@ class ReportGenerator:
 
         result = {}
         self.QA = akasha.Doc_QA(model=self.model, max_doc_len=8000)
-        self.summary = akasha.Summary(chunk_size=1000, max_doc_len=6000)
+        self.summary = akasha.Summary(chunk_size=1000, max_doc_len=8000, model=self.model)
 
         def process_link(link, format_prompt):
             try:
@@ -205,12 +221,15 @@ class ReportGenerator:
                 response.raise_for_status()
                 soup = BeautifulSoup(response.content, 'html.parser')
                 texts = soup.get_text()
-                return self.summary.summarize_articles(
+                summary = self.summary.summarize_articles(
                     articles=texts,
                     format_prompt=format_prompt,
                 )
+                logger.debug(f"Summary generated for link {link}: {summary}")
+                return summary
             except requests.exceptions.RequestException as e:
                 print(f"Error fetching content from {link}: {str(e)}")
+                logger.error(f"Error fetching content from {link}: {str(e)}")
                 return ""
 
         start_time = time.time()
@@ -218,6 +237,7 @@ class ReportGenerator:
         with concurrent.futures.ThreadPoolExecutor(max_workers=5) as executor:
             for title, subtitle in request.titles.items():
                 format_prompt = f"以{request.theme}為主題，請你總結撰寫出與\"{title}\"相關的內容，其中需包含{subtitle}，不需要結論，不需要回應要求。"
+                logger.debug(f"Format prompt for title '{title}': {format_prompt}")
 
                 future_to_link = {executor.submit(process_link, link, format_prompt): link for link in request.links}
                 title_contexts = []
@@ -229,29 +249,36 @@ class ReportGenerator:
                             title_contexts.append(summary)
                     except Exception as exc:
                         print(f'{link} generated an exception: {exc}')
+                        logger.error(f'{link} generated an exception: {exc}')
 
                 if title_contexts:
+                    logger.debug(f"Contexts for title '{title}': {title_contexts}")
                     response = self.QA.ask_self(
                         prompt=f"將此內容以客觀角度進行融合，避免使用\"報告中提到\"相關詞彙，避免修改專有名詞，避免做出總結，避免重複內容，直接撰寫內容，避免回應要求。",
                         info=title_contexts,
-                        model="openai:gpt-4"
+                        model=self.model
                     )
+                    logger.debug(f"Generated content for title '{title}': {response}")
                     result[title] = response
                 else:
+                    logger.warning(f"No content generated for title '{title}'")
                     result[title] = "無法獲取相關內容"
 
         previous_result = ""
         for value in result.values():
             previous_result += value
         if not reprocess:
+            logger.debug(f"Generating content summary")
             result["內容摘要"] = self.summary.summarize_articles(
                 articles=previous_result,
                 format_prompt=f"將內容以{request.theme}為主題進行摘要，將用字換句話說，意思不變，不需要結論，不需要回應要求。",
                 summary_len=500
             )
+            logger.debug(f"Generated content summary: {result['內容摘要']}")
         total_time = time.time() - start_time
         self.final_result = result.copy()
         return self.final_result, total_time
+
     def generate_recommend_titles(self, request: ReportRequest):
         theme = request.theme
         self.openai_config = request.openai_config or {}
@@ -261,6 +288,7 @@ class ReportGenerator:
         formatter = akasha.prompts.JSON_formatter_list(names=["段落標題", "段落次標題"], types=["list", "list"], descriptions=["每段段落標題", "每段多個段落次標題"])
         JSON_prompt = akasha.prompts.JSON_formatter(formatter)
         try:
+            logger.debug(f"Generating recommended titles for theme: {theme}")
             generated_titles = self.QA.ask_self(
                 system_prompt=JSON_prompt,
                 prompt=f"我想要寫一份報告，請以{theme}主題，幫我制定四個或五個段落標題，其中每個段落標題都有其各自的次標題，請參考以下範例，並回答。",
@@ -281,9 +309,11 @@ class ReportGenerator:
                     固態電池技術
                     其他新興電池技術
                 """,
-                model="openai:gpt-4"
+                model=self.model
             )
+            logger.debug(f"Generated recommended titles: {generated_titles}")
         except Exception as e:
+            logger.error(f"Error generating recommended titles: {str(e)}")
             raise HTTPException(status_code=400, detail=str(e))
         return generated_titles
 
@@ -329,7 +359,7 @@ class ReportGenerator:
             raise HTTPException(status_code=400, detail="請提供OpenAI或Azure的API金鑰")
 
         self.QA = akasha.Doc_QA(model=self.model, max_doc_len=8000)
-        self.summary = akasha.Summary(chunk_size=1000, max_doc_len=7000)
+        self.summary = akasha.Summary(chunk_size=1000, max_doc_len=8000, model=self.model)
 
         if self.final_result != {}:
             new_request = self.QA.ask_self(
@@ -389,11 +419,12 @@ class ReportGenerator:
                 無法理解您的修改要求，請提供更多資訊
                 """,
                 info=[key for key in self.final_result.keys()],
-                model="openai:gpt-4",
+                model=self.model,
                 verbose=True
             )
 
             try:
+                logger.debug(f"Reprocessing part: {part}, with command: {mod_command}")
                 part = new_request.split("修改部分: ")[1].split("\n修改內容: ")[0]
                 mod_command = new_request.split("修改部分: ")[1].split("\n修改內容: ")[1]
                 if part in self.final_result:
@@ -429,9 +460,10 @@ class ReportGenerator:
                         unknown
                         """,
                         info=previous_context,
-                        model="openai:gpt-4",
+                        model=self.model,
                         verbose=True
                     )
+                    logger.debug(f"Modification decision: {modification}")
                     while modification == "unknown":
                         modification = input("無法判斷是否需要重新爬取資料，請問是否需要從原文重新爬取資料? (y/n)\n")
                         if modification != "y" and modification != "n":
@@ -474,10 +506,11 @@ class ReportGenerator:
                             台灣的電池產業發展迅速，主要市場區域包括美洲和歐洲。
                             """,
                             info=previous_context,
-                            model="openai:gpt-4",
+                            model=self.model,
                             verbose=True
                         )
                     else:
+                        logger.error(f"Part not found: {part}")
                         raise HTTPException(status_code=400, detail="無法確定是否需要重新爬取資料")
 
                     return {
@@ -488,6 +521,7 @@ class ReportGenerator:
                 else:
                     raise HTTPException(status_code=400, detail=f"未找到指定的部分: {part}")
             except Exception as e:
+                logger.error(f"Error during content reprocessing: {str(e)}")
                 raise HTTPException(status_code=400, detail=str(e))
 
         return {
