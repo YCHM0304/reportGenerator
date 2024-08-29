@@ -118,6 +118,7 @@ class ReportRequest(BaseModel):
     titles: Dict[str, List[str]]
     links: List[str]
     openai_config: Optional[Dict[str, Any]]
+    final_summary: Optional[bool] = True
 
 class ReprocessContentRequest(BaseModel):
     command: str
@@ -593,7 +594,7 @@ def get_report_generator(current_user: User = Depends(get_current_user)):
 @app.post("/generate_report")
 async def generate_report(request: ReportRequest, generator: ReportGenerator = Depends(get_report_generator)):
     logger.info(f"Generating report for user: {generator.username}")
-    result, total_time = generator.generate_report(request)
+    result, total_time = generator.generate_report(request, not request.final_summary)
     generator.save_result()
     logger.info(f"Report generated for user: {generator.username}. Total time: {total_time} seconds")
     return {"result": result, "total_time": total_time}

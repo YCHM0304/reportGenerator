@@ -284,7 +284,7 @@ def generate_report(api_config):
 
     links = st.text_area("Enter links (one per line)")
     links_list = links.split('\n') if links else []
-
+    final_summary = st.checkbox("Generate final summary", value=True)
     col1, col2 = st.columns(2)
     with col1:
         generate_report_clicked = st.button("Generate Report", key="generate_report", disabled=st.session_state.generate_report_clicked or st.session_state.reprocess_clicked, use_container_width=True)
@@ -308,7 +308,8 @@ def generate_report(api_config):
                 "theme": theme,
                 "titles": titles_dict,
                 "links": links_list,
-                "openai_config": api_config
+                "openai_config": api_config,
+                "final_summary": final_summary
             }
 
             access_token = get_access_token()
