@@ -474,18 +474,25 @@ def generate_and_reprocess_report(api_config):
     reprocess_content(api_config)
 
 # 登出
-# def logout():
-#     """
-#     創建註銷界面，允許用戶登出當前會話。
-#     處理註銷請求並清除訪問令牌。
-#     """
-#     st.session_state.current_page = 'logout'
-#     st.header("Logout")
-
-#     if st.button("Logout", disabled=st.session_state.generate_report_clicked or st.session_state.reprocess_report_clicked):
-#         clear_access_token()
-#         st.success("You have been logged out successfully.")
-#         st.rerun()
+def logout(access_token):
+    """
+    創建註銷界面，允許用戶登出當前會話。
+    處理註銷請求並清除訪問令牌。
+    """
+    delete_report = st.sidebar.checkbox("Delete report when logging out")
+    if st.sidebar.button("Logout"):
+        clear_access_token()
+        clear_api_config()
+        headers = {"Authorization": f"Bearer {access_token}"} if access_token else {}
+        if delete_report:
+            requests.delete(f"{API_BASE_URL}/delete_report", headers=headers)
+        else:
+            requests.get(f"{API_BASE_URL}/logout", headers=headers)
+        # 清除所有相關的 session state 變量
+        for key in list(st.session_state.keys()):
+            del st.session_state[key]
+        st.success("You have been logged out successfully. API configuration has been cleared.")
+        st.rerun()
 
 def main():
     st.title("Report Generator")
@@ -499,14 +506,8 @@ def main():
     else:
         menu = ["Generate and Reprocess Report", "Get Report"]
         choice = st.sidebar.selectbox("Menu", menu)
-        if st.sidebar.button("Logout"):
-            clear_access_token()
-            clear_api_config()
-            # 清除所有相關的 session state 變量
-            for key in list(st.session_state.keys()):
-                del st.session_state[key]
-            st.success("You have been logged out successfully. API configuration has been cleared.")
-            st.rerun()
+        logout(access_token)
+
 
     if choice == "Login":
         login_user()

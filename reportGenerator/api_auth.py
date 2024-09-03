@@ -605,6 +605,7 @@ async def generate_report(request: ReportRequest, generator: ReportGenerator = D
     logger.info(f"Generating report for user: {generator.username}")
     result, total_time = generator.generate_report(request, not request.final_summary)
     generator.save_result()
+    total_time = "%.2f" % total_time
     logger.info(f"Report generated for user: {generator.username}. Total time: {total_time} seconds")
     return {"result": result, "total_time": total_time}
 
@@ -653,11 +654,20 @@ async def reprocess_content(request: ReprocessContentRequest, generator: ReportG
     logger.info(f"Content reprocessed for user: {generator.username}")
     return {"result": result}
 
+@app.get("/logout")
+async def logout(generator: ReportGenerator = Depends(get_report_generator)):
+    logger.info(f"User {generator.username} logged out")
+    if generator.username in user_sessions:
+        del user_sessions[generator.username]
+    return {"result": "Logged out"}
+
 @app.delete("/delete_report")
 async def delete_report(generator: ReportGenerator = Depends(get_report_generator)):
+    logger.info(f"User {generator.username} logged out and report deleted")
     generator.delete_result()
-    del user_sessions[generator.username]
-    return {"result": "Report deleted"}
+    if generator.username in user_sessions:
+        del user_sessions[generator.username]
+    return {"result": "Logged out and report deleted"}
 
 if __name__ == "__main__":
     import uvicorn
