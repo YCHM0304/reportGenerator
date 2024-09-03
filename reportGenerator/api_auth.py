@@ -1,23 +1,26 @@
+import concurrent.futures
+import io
+import json
+import logging
+import os
+import time
+from contextlib import contextmanager
+from datetime import datetime, timedelta, timezone
+from logging.handlers import TimedRotatingFileHandler
+from typing import Dict, List, Any, Optional
+
+import akasha
+import jwt
+import requests
+from bs4 import BeautifulSoup
 from fastapi import FastAPI, HTTPException, Depends, Header, Body
 from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
+from passlib.context import CryptContext
 from pydantic import BaseModel
-from typing import Dict, List, Any, Optional
-import akasha
-import requests
-import os
-from bs4 import BeautifulSoup
-import json
-import time
-import concurrent.futures
+from PyPDF2 import PdfReader
 from sqlalchemy import create_engine, Column, String, JSON
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker
-from contextlib import contextmanager
-from passlib.context import CryptContext
-import jwt
-from datetime import datetime, timedelta, timezone
-import logging
-from logging.handlers import TimedRotatingFileHandler
 
 def custom_namer(default_name):
     base_filename, ext, date = default_name.split(".")
@@ -220,8 +223,19 @@ class ReportGenerator:
             try:
                 response = requests.get(link)
                 response.raise_for_status()
-                soup = BeautifulSoup(response.content, 'html.parser')
-                texts = soup.get_text()
+
+                if link.lower().endswith('.pdf'):
+                    # Handle PDF file
+                    pdf_file = io.BytesIO(response.content)
+                    pdf_reader = PdfReader(pdf_file)
+                    texts = ""
+                    for page in pdf_reader.pages:
+                        texts += page.extract_text()
+                else:
+                    # Handle HTML content
+                    soup = BeautifulSoup(response.content, 'html.parser')
+                    texts = soup.get_text()
+
                 summary = self.summary.summarize_articles(
                     articles=texts,
                     format_prompt=format_prompt,
@@ -231,6 +245,10 @@ class ReportGenerator:
             except requests.exceptions.RequestException as e:
                 print(f"Error fetching content from {link}: {str(e)}")
                 logger.error(f"Error fetching content from {link}: {str(e)}")
+                return ""
+            except Exception as e:
+                print(f"Error processing content from {link}: {str(e)}")
+                logger.error(f"Error processing content from {link}: {str(e)}")
                 return ""
 
         start_time = time.time()
@@ -360,7 +378,7 @@ class ReportGenerator:
             raise HTTPException(status_code=400, detail="請提供OpenAI或Azure的API金鑰")
 
         self.QA = akasha.Doc_QA(model=self.model, max_doc_len=8000)
-        self.summary = akasha.Summary(chunk_size=1000, max_doc_len=7000)
+        self.summary = akasha.Summary(chunk_size=1000, max_doc_len=2000)
 
         if self.final_result != {}:
             new_request = self.QA.ask_self(
@@ -470,6 +488,8 @@ class ReportGenerator:
                         if modification != "y" and modification != "n":
                             modification = "unknown"
                     if modification == "y":
+                        if request.links:
+                            self.report_config["links"] += request.links
                         new_response = self.generate_report(
                             ReportRequest(
                                 theme=self.report_config["theme"],

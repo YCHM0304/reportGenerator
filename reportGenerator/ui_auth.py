@@ -364,6 +364,10 @@ def reprocess_content(api_config):
         return
 
     command = st.text_input("Enter the command for reprocess", value=st.session_state.reprocess_command)
+    more_info_from_links = st.checkbox("Additional Information Source URLs", value=False, help='Add more URLs to expand the data sources for your report.')
+    if more_info_from_links:
+        links = st.text_area("Enter links (one per line)", key=more_info_from_links)
+        links_list = links.split('\n') if links else []
 
     col1, col2 = st.columns(2)
     with col1:
@@ -387,7 +391,8 @@ def reprocess_content(api_config):
             st.session_state.reprocess_command = command
             data = {
                 "command": command,
-                "openai_config": api_config
+                "openai_config": api_config,
+                "links": links_list if more_info_from_links else None
             }
 
             headers = {"Authorization": f"Bearer {access_token}"} if access_token else {}
