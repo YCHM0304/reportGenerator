@@ -13,6 +13,7 @@ import akasha
 import jwt
 import requests
 from bs4 import BeautifulSoup
+from fastapi.responses import JSONResponse
 from fastapi import FastAPI, HTTPException, Depends, Header, Body
 from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
 from passlib.context import CryptContext
@@ -126,6 +127,8 @@ class ReportRequest(BaseModel):
 class ReprocessContentRequest(BaseModel):
     command: str
     openai_config: Optional[Dict[str, Any]]
+    links: Optional[List[str]]
+    user_decision: Optional[bool] = None
 
 def verify_password(plain_password, hashed_password):
     return pwd_context.verify(plain_password, hashed_password)
@@ -383,59 +386,33 @@ class ReportGenerator:
         if self.final_result != {}:
             new_request = self.QA.ask_self(
                 prompt=f"""使用者輸入了以下修改要求:
-                ----------------
-                {request.command}
-                ----------------
-                從給定的list和使用者的修改要求中找出使用者要求修改的部分為何，以及要如何修改，前面不須加上"回覆:"。
+                    ----------------
+                    {request.command}
+                    ----------------
+                    從給定的list和使用者的修改要求中找出使用者要求修改的部分為何，以及要如何修改。請按以下格式回覆:
 
-                範例:
-                <給定的list>
-                ["全球電池市場概況", "技術發展趨勢", "應用領域與市場機會", "政策與供應鏈分析"]
-                <要求>
-                技術發展趨勢的部分我覺得不夠完整，請加入更多新興電池技術的內容。
-                <回覆>
-                修改部分: 技術發展趨勢
-                修改內容: 加入更多新興電池技術的內容
+                    修改部分: <修改部分>
+                    修改內容: <修改內容>
 
-                若要求的部分不在給定的list當中，請回覆"報告中無此部分，請確認後再提出修改要求"，前面不須加上"回覆:"。
+                    注意事項:
+                    1. 若要求的部分不在給定的list當中，請回覆:
+                    "報告中無此部分，請確認後再提出修改要求"
 
-                範例:
-                <給定的list>
-                ["全球電池市場概況", "技術發展趨勢", "應用領域與市場機會", "政策與供應鏈分析"]
-                <要求>
-                我覺得電池發展歷史的部分不夠完整，請幫我修改。
-                <回覆>
-                報告中無此部分，請確認後再提出修改要求。
+                    2. 若修改要求中有錯別字或文法錯誤，但仍能理解要求，也請按上述格式回覆。
 
-                若修改要求中雖然有錯別字或文法錯誤，但仍能理解要求，也請回覆"修改部分: <修改部分> 修改內容: <修改內容>"，前面不須加上"回覆:"。
+                    3. 若只有提出修改的要求，沒有指定要修改的部分，請回覆:
+                    "不知道您想要修改哪一部分，請提供更多資訊"
 
-                範例:
-                <給定的list>
-                ["全球電池市場概況", "技術發展趨勢", "應用領域與市場機會", "政策與供應鏈分析"]
-                <要求>
-                我覺得全球電池試場概況的部分不夠完整，請加入更多市場規模與增長趨勢的內容。
-                <回覆>
-                修改部分: 全球電池市場概況
-                修改內容: 加入更多市場規模與增長趨勢的內容
+                    4. 若無明確指定想要如何修改，請回覆:
+                    "無法理解您的修改要求，請提供更多資訊"
 
-                若只有提出修改的要求，沒有指定要修改的部分，請回覆"不知道您想要修改哪一部分，請提供更多資訊"。避免自動回覆list中所有項目。前面不須加上"回覆:"。
-                只要要求中沒有看到list中的element，就回覆"不知道您想要修改哪一部分，請提供更多資訊"。
-                範例:
-                <給定的list>
-                ["全球電池市場概況", "技術發展趨勢", "應用領域與市場機會", "政策與供應鏈分析"]
-                <要求>
-                去除2025年以前的資料。
-                <回覆>
-                不知道您想要修改哪一部分，請提供更多資訊
+                    5. 若用戶要求同時修改多個部分，請分別列出每個修改部分和相應的修改內容。
 
-                若無明確指定想要如何修改，回覆"無法理解您的修改要求，請提供更多資訊"，前面不須加上"回覆:"。
+                    6. 如果對於修改要求有任何不確定之處，請明確指出並提出澄清問題。
 
-                <給定的list>
-                ["全球電池市場概況", "技術發展趨勢", "應用領域與市場機會", "政策與供應鏈分析"]
-                <要求>
-                我覺得技術發展趨勢的部分有問題。
-                <回覆>
-                無法理解您的修改要求，請提供更多資訊
+                    7. 只要要求中沒有明確提到list中的任何元素，就回覆"不知道您想要修改哪一部分，請提供更多資訊"。
+
+                    請根據以上指示處理修改要求。
                 """,
                 info=[key for key in self.final_result.keys()],
                 model=self.model,
@@ -448,40 +425,42 @@ class ReportGenerator:
                 logger.debug(f"Reprocessing part: {part}, with command: {mod_command}")
                 if part in self.final_result:
                     previous_context = self.final_result[part]
-                    modification = self.QA.ask_self(
-                        prompt=f"""從以下修改要求和提供的內容判斷是否需要重新爬取資料。大部分情況需要加入新的資料進去時會，
-                        需要爬取資料，此時需要回覆"y"。否則回覆"n"。若修改要求和提供的內容完全沒有關聯性或者無法判斷時，請回覆"unknown"。
-                        ----------------
-                        {mod_command}
-                        ----------------
-                        y的範例:
-                        <修改要求>
-                        加入非洲市場區域分析。
-                        <提供的內容>
-                        台灣的電池產業發展迅速，主要市場區域包括亞洲、美洲和歐洲。
-                        <回覆>
-                        y
+                    if request.user_decision is not None:
+                        modification = "y" if request.user_decision else "n"
+                    else:
+                        modification = self.QA.ask_self(
+                            prompt=f"""判斷是否需要重新爬取資料
+                                請根據修改要求和提供的內容,回覆 y、n 或 unknown:
 
-                        n的範例:
-                        <修改要求>
-                        消去亞洲市場區域分析。
-                        <提供的內容>
-                        台灣的電池產業發展迅速，主要市場區域包括亞洲、美洲和歐洲。
-                        <回覆>
-                        n
+                                修改要求:
+                                ----------------
+                                {mod_command}
+                                ----------------
 
-                        unknown的範例:
-                        <修改要求>
-                        加入非洲動物大遷徙的資訊
-                        <提供的內容>
-                        台灣的電池產業發展迅速，主要市場區域包括亞洲、美洲和歐洲。
-                        <回覆>
-                        unknown
-                        """,
-                        info=previous_context,
-                        model=self.model,
-                        verbose=True
-                    )
+                                判斷標準:
+                                - 需要加入新資料時,回覆 y
+                                - 僅需修改現有內容時,回覆 n
+                                - 修改要求與內容無關或無法判斷時,回覆 unknown
+
+                                示例:
+                                1. 需要重新爬取 (y):
+                                修改要求: 加入非洲市場區域分析
+                                提供內容: 台灣電池產業發展迅速,主要市場包括亞洲、美洲和歐洲
+
+                                2. 不需重新爬取 (n):
+                                修改要求: 刪除亞洲市場區域分析
+                                提供內容: 台灣電池產業發展迅速,主要市場包括亞洲、美洲和歐洲
+
+                                3. 無法判斷 (unknown):
+                                修改要求: 加入非洲動物大遷徙資訊
+                                提供內容: 台灣電池產業發展迅速,主要市場包括亞洲、美洲和歐洲
+
+                                請根據以上標準,對給定的修改要求做出判斷。
+                            """,
+                            info=previous_context,
+                            model=self.model,
+                            verbose=True
+                        )
                     logger.debug(f"Modification decision: {modification}")
                     while modification == "unknown":
                         modification = input("無法判斷是否需要重新爬取資料，請問是否需要從原文重新爬取資料? (y/n)\n")
@@ -667,12 +646,20 @@ async def save_reprocessed_content(
         raise HTTPException(status_code=400, detail="無法更新指定的部分")
 
 @app.post("/reprocess_content")
-async def reprocess_content(request: ReprocessContentRequest, generator: ReportGenerator = Depends(get_report_generator)):
+async def reprocess_content(
+    request: ReprocessContentRequest,
+    generator: ReportGenerator = Depends(get_report_generator)
+):
     logger.info(f"Reprocessing content for user: {generator.username}")
     generator.load_result()
-    result = generator.reprocess_content(request)
-    logger.info(f"Content reprocessed for user: {generator.username}")
-    return {"result": result}
+    try:
+        result = generator.reprocess_content(request)
+        logger.info(f"Content reprocessed for user: {generator.username}")
+        return {"result": result}
+    except HTTPException as e:
+        if e.status_code == 422:
+            return JSONResponse(status_code=422, content=e.detail)
+        raise e
 
 @app.get("/logout")
 async def logout(generator: ReportGenerator = Depends(get_report_generator)):

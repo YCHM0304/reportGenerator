@@ -398,12 +398,35 @@ def reprocess_content(api_config):
             headers = {"Authorization": f"Bearer {access_token}"} if access_token else {}
             with st.spinner("Reprocessing report..."):
                 response = requests.post(f"{API_BASE_URL}/reprocess_content", json=data, headers=headers)
-                if response.status_code == 200:
+                if response.status_code == 422 and "requires_user_input" in response.json().get("detail", {}):
+                    # 處理"unknown"
+                    detail = response.json()["detail"]
+                    st.warning(detail["message"])
+                    user_decision = st.radio(
+                        detail["input_question"],
+                        options=["Yes", "No"],
+                        key="user_decision"
+                    )
+
+                    if st.button("Submit"):
+                        user_decision_bool = user_decision == "Yes"
+                        data["user_decision"] = user_decision_bool
+                        response = requests.post(f"{API_BASE_URL}/reprocess_content", json=data, headers=headers)
+
+                        if response.status_code == 200:
+                            st.session_state.reprocess_result = response.json()['result']
+                            st.success("Content reprocessed successfully.")
+                        else:
+                            st.error(f"Error: {response.status_code} - {response.text}")
+                            st.session_state.reprocess_result = None
+
+                elif response.status_code == 200:
                     st.session_state.reprocess_result = response.json()['result']
                     st.success("Content reprocessed successfully.")
                 else:
                     st.error(f"Error: {response.status_code} - {response.text}")
                     st.session_state.reprocess_result = None
+
         time.sleep(2)
         st.session_state.reprocess_clicked = False
         st.rerun()
