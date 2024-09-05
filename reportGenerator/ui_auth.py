@@ -219,6 +219,7 @@ def reset_states():
     st.session_state.num_titles = 1
     st.session_state.titles_dict = {}
     st.session_state.links = ""
+    st.session_state.generate_recommend_titles_clicked = False
 
 # 生成報告
 def generate_report(api_config):
@@ -292,6 +293,9 @@ def generate_report(api_config):
         reset = st.button("Reset All", key="reset_all", use_container_width=True, disabled=st.session_state.generate_report_clicked or st.session_state.reprocess_clicked)
 
     if generate_report_clicked:
+        if not theme or not titles_dict or not links_list:
+            st.error("Please fill in all fields.")
+            return  # 直接返回，不設置 generate_report_clicked 為 True
         st.session_state.generate_report_clicked = True
         st.rerun()
     if reset:
@@ -300,28 +304,25 @@ def generate_report(api_config):
         st.rerun()
 
     if st.session_state.generate_report_clicked:
-        if not theme or not titles_dict or not links_list:
-            st.error("Please fill in all fields.")
-            st.rerun()
-        else:
-            data = {
-                "theme": theme,
-                "titles": titles_dict,
-                "links": links_list,
-                "openai_config": api_config,
-                "final_summary": final_summary
-            }
+        data = {
+            "theme": theme,
+            "titles": titles_dict,
+            "links": links_list,
+            "openai_config": api_config,
+            "final_summary": final_summary
+        }
 
-            access_token = get_access_token()
-            headers = {"Authorization": f"Bearer {access_token}"} if access_token else {}
+        access_token = get_access_token()
+        headers = {"Authorization": f"Bearer {access_token}"} if access_token else {}
 
-            with st.spinner("Generating report..."):
-                response = requests.post(f"{API_BASE_URL}/generate_report", json=data, headers=headers, verify=False)
-                if response.status_code == 200:
-                    result = response.json()
-                    st.success(f"Report generated successfully. Total time: {result['total_time']} seconds.")
-                else:
-                    st.error(f"Error: {response.status_code} - {response.text}")
+        with st.spinner("Generating report..."):
+            response = requests.post(f"{API_BASE_URL}/generate_report", json=data, headers=headers, verify=False)
+            if response.status_code == 200:
+                result = response.json()
+                st.success(f"Report generated successfully. Total time: {result['total_time']} seconds.")
+            else:
+                st.error(f"Error: {response.status_code} - {response.text}")
+
         time.sleep(2)
         st.session_state.generate_report_clicked = False
         st.session_state.report_checked = False
@@ -376,6 +377,9 @@ def reprocess_content(api_config):
         reset_button = st.button("Reset", use_container_width=True, disabled=st.session_state.reprocess_clicked or st.session_state.generate_report_clicked)
 
     if reprocess_button:
+        if not command:
+            st.error("Command is required.")
+            return  # 直接返回，不設置 reprocess_clicked 為 True
         st.session_state.reprocess_clicked = True
         st.rerun()
 
@@ -384,48 +388,45 @@ def reprocess_content(api_config):
         st.rerun()
 
     if st.session_state.reprocess_clicked:
-        if not command:
-            st.error("Command is required.")
-        else:
-            st.session_state.reprocess_clicked = True
-            st.session_state.reprocess_command = command
-            data = {
-                "command": command,
-                "openai_config": api_config,
-                "links": links_list if more_info_from_links else None
-            }
+        st.session_state.reprocess_clicked = True
+        st.session_state.reprocess_command = command
+        data = {
+            "command": command,
+            "openai_config": api_config,
+            "links": links_list if more_info_from_links else None
+        }
 
-            headers = {"Authorization": f"Bearer {access_token}"} if access_token else {}
-            with st.spinner("Reprocessing report..."):
-                response = requests.post(f"{API_BASE_URL}/reprocess_content", json=data, headers=headers)
-                if response.status_code == 422 and "requires_user_input" in response.json().get("detail", {}):
-                    # 處理"unknown"
-                    detail = response.json()["detail"]
-                    st.warning(detail["message"])
-                    user_decision = st.radio(
-                        detail["input_question"],
-                        options=["Yes", "No"],
-                        key="user_decision"
-                    )
+        headers = {"Authorization": f"Bearer {access_token}"} if access_token else {}
+        with st.spinner("Reprocessing report..."):
+            response = requests.post(f"{API_BASE_URL}/reprocess_content", json=data, headers=headers)
+            if response.status_code == 422 and "requires_user_input" in response.json().get("detail", {}):
+                # 處理"unknown"
+                detail = response.json()["detail"]
+                st.warning(detail["message"])
+                user_decision = st.radio(
+                    detail["input_question"],
+                    options=["Yes", "No"],
+                    key="user_decision"
+                )
 
-                    if st.button("Submit"):
-                        user_decision_bool = user_decision == "Yes"
-                        data["user_decision"] = user_decision_bool
-                        response = requests.post(f"{API_BASE_URL}/reprocess_content", json=data, headers=headers)
+                if st.button("Submit"):
+                    user_decision_bool = user_decision == "Yes"
+                    data["user_decision"] = user_decision_bool
+                    response = requests.post(f"{API_BASE_URL}/reprocess_content", json=data, headers=headers)
 
-                        if response.status_code == 200:
-                            st.session_state.reprocess_result = response.json()['result']
-                            st.success("Content reprocessed successfully.")
-                        else:
-                            st.error(f"Error: {response.status_code} - {response.text}")
-                            st.session_state.reprocess_result = None
+                    if response.status_code == 200:
+                        st.session_state.reprocess_result = response.json()['result']
+                        st.success("Content reprocessed successfully.")
+                    else:
+                        st.error(f"Error: {response.status_code} - {response.text}")
+                        st.session_state.reprocess_result = None
 
-                elif response.status_code == 200:
-                    st.session_state.reprocess_result = response.json()['result']
-                    st.success("Content reprocessed successfully.")
-                else:
-                    st.error(f"Error: {response.status_code} - {response.text}")
-                    st.session_state.reprocess_result = None
+            elif response.status_code == 200:
+                st.session_state.reprocess_result = response.json()['result']
+                st.success("Content reprocessed successfully.")
+            else:
+                st.error(f"Error: {response.status_code} - {response.text}")
+                st.session_state.reprocess_result = None
 
         time.sleep(2)
         st.session_state.reprocess_clicked = False
