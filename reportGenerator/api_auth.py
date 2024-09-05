@@ -210,8 +210,9 @@ class ReportGenerator:
         return False
 
     def generate_report(self, request: ReportRequest, reprocess: bool = False, more_info: str = None):
-        self.report_config["theme"] = request.theme
-        self.report_config["titles"] = request.titles.copy()
+        if not more_info:
+            self.report_config["theme"] = request.theme
+            self.report_config["titles"] = request.titles.copy()
         self.report_config["links"] = request.links.copy()
         self.openai_config = request.openai_config or {}
 
@@ -384,37 +385,65 @@ class ReportGenerator:
         self.summary = akasha.Summary(chunk_size=1000, max_doc_len=2000)
 
         if self.final_result != {}:
+            parts = [key for key in self.final_result.keys()]
             new_request = self.QA.ask_self(
                 prompt=f"""使用者輸入了以下修改要求:
                     ----------------
                     {request.command}
                     ----------------
-                    從給定的list和使用者的修改要求中找出使用者要求修改的部分為何，以及要如何修改。請按以下格式回覆:
+                    從我提供的報告中所有的part和使用者的修改要求中找出使用者要求修改的部分為何，以及要如何修改。請按以下格式回覆:
 
                     修改部分: <修改部分>
                     修改內容: <修改內容>
 
                     注意事項:
-                    1. 若要求的部分不在給定的list當中，請回覆:
-                    "報告中無此部分，請確認後再提出修改要求"
+                    1. 若修改要求中有錯別字或文法錯誤，但仍能理解要求，也請按上述格式回覆。
 
-                    2. 若修改要求中有錯別字或文法錯誤，但仍能理解要求，也請按上述格式回覆。
-
-                    3. 若只有提出修改的要求，沒有指定要修改的部分，請回覆:
+                    2. 若只有提出修改的要求，沒有指定要修改的部分，請回覆:
                     "不知道您想要修改哪一部分，請提供更多資訊"
 
-                    4. 若無明確指定想要如何修改，請回覆:
+                    3. 若無明確指定想要如何修改，請回覆:
                     "無法理解您的修改要求，請提供更多資訊"
 
-                    5. 若用戶要求同時修改多個部分，請分別列出每個修改部分和相應的修改內容。
+                    4. 若用戶要求同時修改多個部分，請分別列出每個修改部分和相應的修改內容。
 
-                    6. 如果對於修改要求有任何不確定之處，請明確指出並提出澄清問題。
+                    5. 如果對於修改要求有任何不確定之處，請明確指出並提出澄清問題。
 
-                    7. 只要要求中沒有明確提到list中的任何元素，就回覆"不知道您想要修改哪一部分，請提供更多資訊"。
+                    6. 只要要求中沒有明確提到list中的任何元素，就回覆"不知道您想要修改哪一部分，請提供更多資訊"。
 
                     請根據以上指示處理修改要求。
+
+                    例子:
+                    假設給定的報告中的parts包含: 摘要, 前言, 方法, 結果, 討論, 結論
+
+                    修改要求: "把摘要改成200字"
+                    回覆:
+                        修改部分: 摘要
+                        修改內容: 改寫為200字
+                    修改要求: "將結果部分的數據圖表更新為最新數據"
+                    回覆:
+                        修改部分: 結果
+                        修改內容: 更新數據圖表為最新數據
+                    修改要求: "在文獻回顧中加入Smith等人的研究"
+                    回覆:
+                        報告中無此部分，請確認後再提出修改要求
+                    修改要求: "改正錯別字"
+                    回覆:
+                        不知道您想要修改哪一部分，請提供更多資訊
+                    修改要求: "在方法部分加入實驗步驟，並在結果中呈現更多統計數據"
+                    回覆:
+                        修改部分: 方法
+                        修改內容: 加入實驗步驟
+                    修改要求: "把結論改得更好"
+                    回覆:
+                        無法理解您的修改要求，請提供更多資訊
+                    修改要求: "在摘要中加入研究目的，並且把它改得更簡潔"
+                    回覆:
+                        修改部分: 摘要
+                        修改內容: 加入研究目的並使整體更簡潔
                 """,
-                info=[key for key in self.final_result.keys()],
+                info=f"報告中包含以下part: {', '.join(parts)}",
+
                 model=self.model,
                 verbose=True
             )
@@ -462,13 +491,25 @@ class ReportGenerator:
                             verbose=True
                         )
                     logger.debug(f"Modification decision: {modification}")
-                    while modification == "unknown":
-                        modification = input("無法判斷是否需要重新爬取資料，請問是否需要從原文重新爬取資料? (y/n)\n")
-                        if modification != "y" and modification != "n":
-                            modification = "unknown"
+                    if modification == "unknown":
+                        raise HTTPException(
+                            status_code=422,
+                            detail={
+                                "message": "無法判斷是否需要重新爬取資料",
+                                "requires_user_input": True,
+                                "input_type": "boolean",
+                                "input_question": "是否需要從原文重新爬取資料?",
+                                "part": part,
+                                "mod_command": mod_command
+                            }
+                        )
                     if modification == "y":
-                        if request.links:
+                        if request.links and (request.links not in self.report_config["links"]):
                             self.report_config["links"] += request.links
+                            print("Links added to report config")
+                            print(self.report_config["links"])
+                        if part == "內容摘要":
+                            raise HTTPException(status_code=400, detail="內容摘要無法重新爬取資料")
                         new_response = self.generate_report(
                             ReportRequest(
                                 theme=self.report_config["theme"],
@@ -479,40 +520,45 @@ class ReportGenerator:
                             reprocess=True,
                             more_info=mod_command
                         )[0][part]
-
                         new_response = self.QA.ask_self(
-                            prompt=f"將給定的兩個內容進行比較，將兩者不同的部分進行融合，形成一個新的內容，不需要結論，不需要回應要求。",
+                            prompt=f"將給定的兩個內容進行比較，將兩者不同的部分進行融合，成為一個新的內容，不需要結論，不需要回應要求。",
                             info=previous_context + "\n---\n" + new_response,
                             model=self.model,
                             verbose=True
                         )
                     elif modification == "n":
                         new_response = self.QA.ask_self(
-                            prompt=f"""將此內容根據以下要求進行修改，若無法達成則不要修改任何內容直接輸出原始內容，不要亂撰寫內容:
-                            ----------------
-                            {mod_command}
-                            ----------------
+                            prompt=f"""
+                                請根據以下指示修改給定內容：
 
-                            範例:
-                            <原始內容>
-                            台灣的電池產業發展迅速，主要市場區域包括亞洲、美洲和歐洲。
-                            <要求>
-                            加入非洲市場區域分析。
-                            (無法達成)
-                            <修改後內容>
-                            "無法達成要求，因此不做任何修改"
-                            \n\n
-                            台灣的電池產業發展迅速，主要市場區域包括亞洲、美洲和歐洲。(輸出與原始內容相同的內容)
+                                1. 閱讀提供的原始內容和修改要求。
 
-                            若能順利修改，則直接輸出修改後的內容，不需要加上類似"要求已達成"這句話。
+                                2. 若能達成修改要求：
+                                - 直接輸出修改後的內容
+                                - 不要加上"要求已達成"等類似說明
 
-                            範例:
-                            <原始內容>
-                            台灣的電池產業發展迅速，主要市場區域包括亞洲、美洲和歐洲。
-                            <要求>
-                            去除跟亞洲有關資料。
-                            <修改後內容>
-                            台灣的電池產業發展迅速，主要市場區域包括美洲和歐洲。
+                                3. 若無法達成修改要求：
+                                - 輸出 "無法達成要求，因此不做任何修改"
+                                - 換行後重複輸出原始內容
+
+                                4. 不要撰寫或添加任何未在原始內容中提及的新資訊
+
+                                修改要求:
+                                {mod_command}
+
+                                範例1（無法達成要求）：
+                                原始內容：台灣的電池產業發展迅速，主要市場區域包括亞洲、美洲和歐洲。
+                                要求：加入非洲市場區域分析。
+                                輸出：
+                                無法達成要求，因此不做任何修改
+
+                                台灣的電池產業發展迅速，主要市場區域包括亞洲、美洲和歐洲。
+
+                                範例2（可以達成要求）：
+                                原始內容：台灣的電池產業發展迅速，主要市場區域包括亞洲、美洲和歐洲。
+                                要求：去除跟亞洲有關資料。
+                                輸出：
+                                台灣的電池產業發展迅速，主要市場區域包括美洲和歐洲。
                             """,
                             info=previous_context,
                             model=self.model,
@@ -545,8 +591,8 @@ class ReportGenerator:
         """
         更新報告中特定部分的內容並保存。
         """
-        if not self.load_result():
-            return False
+        # if not self.load_result():
+        #     return False
 
         if part in self.final_result:
             self.final_result[part] = new_content
