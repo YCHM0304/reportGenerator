@@ -208,7 +208,7 @@ class ReportGenerator:
             return True
         return False
 
-    def generate_report(self, request: ReportRequest, reprocess: bool = False, more_info: str = None):
+    def generate_report(self, request: ReportRequest, is_final_summary: bool = True, more_info: str = None):
         if not more_info:
             self.report_config["report_topic"] = request.report_topic
             self.report_config["main_sections"] = request.main_sections.copy()
@@ -258,7 +258,11 @@ class ReportGenerator:
 
         with concurrent.futures.ThreadPoolExecutor(max_workers=5) as executor:
             for main_section, subsections in request.main_sections.items():
-                format_prompt = f"以{request.report_topic}為主題，請你總結撰寫出與\"{main_section}\"相關的內容，其中需包含{subsections}，不需要結論，不需要回應要求。" + f"另外，{more_info}" if reprocess else ""
+                format_prompt = f"以{request.report_topic}為主題，請你總結撰寫出與\"{main_section}\"相關的內容，其中需包含{subsections}，不需要結論，不需要回應要求。" + (f"另外，{more_info}" if more_info else "")
+                print("----------------")
+                print(format_prompt)
+                print("----------------")
+
                 logger.debug(f"Format prompt for main section '{main_section}': {format_prompt}")
 
                 future_to_link = {executor.submit(process_link, link, format_prompt): link for link in request.links}
@@ -289,7 +293,7 @@ class ReportGenerator:
         previous_result = ""
         for value in result.values():
             previous_result += value
-        if not reprocess:
+        if is_final_summary:
             logger.debug(f"Generating content summary")
             result["內容摘要"] = self.summary.summarize_articles(
                 articles=previous_result,
@@ -515,7 +519,6 @@ class ReportGenerator:
                                 links=self.report_config["links"],
                                 openai_config=self.openai_config
                             ),
-                            reprocess=True,
                             more_info=mod_command
                         )[0][main_section]
                         new_response = self.QA.ask_self(
@@ -643,7 +646,7 @@ def get_report_generator(current_user: User = Depends(get_current_user)):
 @app.post("/generate_report")
 async def generate_report(request: ReportRequest, generator: ReportGenerator = Depends(get_report_generator)):
     logger.info(f"Generating report for user: {generator.username}")
-    result, total_time = generator.generate_report(request, not request.final_summary)
+    result, total_time = generator.generate_report(request, is_final_summary=request.final_summary)
     generator.save_result()
     total_time = "%.2f" % total_time
     logger.info(f"Report generated for user: {generator.username}. Total time: {total_time} seconds")

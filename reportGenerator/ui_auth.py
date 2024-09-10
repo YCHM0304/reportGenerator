@@ -129,7 +129,7 @@ def register_user():
                 token = response.json()["access_token"]
                 set_access_token(token)
                 st.success("Registration successful. You are now logged in.")
-                time.sleep(3)
+                time.sleep(2)
                 st.rerun()
             else:
                 st.error(f"Registration failed: {response.text}")
@@ -150,6 +150,7 @@ def login_user():
             token = response.json()["access_token"]
             set_access_token(token)
             st.success("Login successful.")
+            time.sleep(2)
             st.rerun()
         else:
             st.error(f"Login failed: {response.text}")
@@ -196,10 +197,7 @@ def reset_states():
     st.session_state.reprocess_clicked = False
     st.session_state.reprocess_command = ""
     st.session_state.reprocess_result = None
-    st.session_state.report_topic = ""
     st.session_state.num_main_sections = 1
-    st.session_state.main_sections_dict = {}
-    st.session_state.links = ""
     st.session_state.generate_recommend_main_sections_clicked = False
 
 def generate_report(api_config):
@@ -223,8 +221,9 @@ def generate_report(api_config):
             st.session_state.num_main_sections = 1
 
     if generate_recommend_main_sections_clicked:
-            st.session_state.generate_recommend_main_sections_clicked = True
-            st.rerun()
+        st.session_state.generate_recommend_main_sections_clicked = True
+        st.rerun()
+
     if st.session_state.generate_recommend_main_sections_clicked:
         if report_topic:
             st.session_state.recommended_main_sections = generate_recommend_main_sections(api_config, report_topic)
