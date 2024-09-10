@@ -266,6 +266,21 @@ def generate_report(api_config):
 
     titles_dict = {}
 
+    st.info("""
+        **Titles and Subtitles Guide:**
+
+        - **Titles**: Main topics or sections of your report. Each title represents a major part of your content.
+
+        - **Subtitles**: Specific points or subsections under each title. Enter each subtitle on a new line.
+
+        Example:
+        Title: "Introduction to AI"
+        Subtitles:
+        - Definition of AI
+        - Brief history of AI
+        - Current applications of AI
+        """)
+
     for i in range(st.session_state.num_titles):
         col1, col2 = st.columns(2)
         with col1:

@@ -1,6 +1,7 @@
 akasha-plus==0.3.11
 psycopg2-binary==2.9.9
 python-multipart==0.0.9
+bcrypt==4.0.1
 PyPDF2
 aiohttp
 aiomultiprocess
