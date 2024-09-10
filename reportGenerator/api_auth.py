@@ -358,11 +358,11 @@ class ReportGenerator:
             if not self.final_result:
                 return False
             if not self.report_config["report_topic"]:
-                return False
+                logger.warning(f"Report topic not found for user: {self.username}")
             if not self.report_config["main_sections"]:
-                return False
+                logger.warning(f"Main sections not found for user: {self.username}")
             if not self.report_config["links"]:
-                return False
+                logger.warning(f"Links not found for user: {self.username}")
             return True
 
     def delete_result(self):
