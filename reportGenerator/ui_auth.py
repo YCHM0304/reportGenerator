@@ -235,7 +235,7 @@ def generate_report(api_config):
 
     col1, col2 = st.columns(2)
     with col1:
-        generate_recommend_titles_clicked = st.button("Generate Recommended Titles", disabled=st.session_state.generate_recommend_titles_clicked or st.session_state.generate_report_clicked or st.session_state.reprocess_clicked)
+        generate_recommend_titles_clicked = st.button("Generate Recommended Titles", disabled=st.session_state.generate_recommend_titles_clicked or st.session_state.generate_report_clicked or st.session_state.reprocess_clicked, help="Generate recommended titles based on the theme.")
 
     with col2:
         if st.button("Reset Titles", disabled=st.session_state.generate_recommend_titles_clicked):
@@ -300,7 +300,7 @@ def generate_report(api_config):
 
     links = st.text_area("Enter links (one per line)")
     links_list = links.split('\n') if links else []
-    final_summary = st.checkbox("Generate final summary", value=True)
+    final_summary = st.checkbox("Generate final summary", value=True, help="Generate an extra final summary based on the generated contents.")
     col1, col2 = st.columns(2)
     with col1:
         generate_report_clicked = st.button("Generate Report", key="generate_report", disabled=st.session_state.generate_report_clicked or st.session_state.reprocess_clicked, use_container_width=True)
@@ -357,14 +357,13 @@ def get_report():
         st.warning("Please login first.")
         return
 
-    if st.button("Get Report", disabled=st.session_state.generate_report_clicked or st.session_state.reprocess_report_clicked):
-        headers = {"Authorization": f"Bearer {access_token}"} if access_token else {}
-        response = requests.get(f"{API_BASE_URL}/get_report", headers=headers)
-        if response.status_code == 200:
-            result = response.json()
-            st.json(result["result"])
-        else:
-            st.error(f"Error: {response.status_code} - {response.text}")
+    headers = {"Authorization": f"Bearer {access_token}"} if access_token else {}
+    response = requests.get(f"{API_BASE_URL}/get_report", headers=headers)
+    if response.status_code == 200:
+        result = response.json()
+        st.json(result["result"])
+    else:
+        st.error(f"Error: {response.status_code} - {response.text}")
 
 def reprocess_content(api_config):
     """
@@ -379,6 +378,11 @@ def reprocess_content(api_config):
         st.warning("Please login first.")
         return
 
+    st.info("""
+        Only **one part** of the content can be reprocessed at a time.
+
+        Request more than one part will result in an error.
+    """)
     command = st.text_input("Enter the command for reprocess", value=st.session_state.reprocess_command)
     more_info_from_links = st.checkbox("Additional Information Source URLs", value=False, help='Add more URLs to expand the data sources for your report.')
     if more_info_from_links:
