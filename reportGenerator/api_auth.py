@@ -13,7 +13,7 @@ import akasha
 import jwt
 import requests
 from bs4 import BeautifulSoup
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, StreamingResponse
 from fastapi import FastAPI, HTTPException, Depends, Header, Body
 from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
 from passlib.context import CryptContext
@@ -690,6 +690,30 @@ async def save_reprocessed_content(
     else:
         logger.error(f"Failed to update content for user: {generator.username}")
         raise HTTPException(status_code=400, detail="無法更新指定的部分")
+
+@app.get("/download_report")
+async def download_report(generator: ReportGenerator = Depends(get_report_generator)):
+    logger.info(f"Generating downloadable report for user: {generator.username}")
+    if generator.load_result():
+        result = generator.final_result
+
+        # Generate report content
+        report_content = io.StringIO()
+        report_content.write(f"Report for: {generator.report_config['theme']}\n\n")
+
+        for title, content in result.items():
+            report_content.write(f"# {title}\n\n")
+            report_content.write(f"{content}\n\n")
+
+        # Create a StreamingResponse
+        response = StreamingResponse(iter([report_content.getvalue()]), media_type="text/plain")
+        response.headers["Content-Disposition"] = f"attachment; filename=report_{generator.username}.txt"
+
+        logger.info(f"Downloadable report generated for user: {generator.username}")
+        return response
+    else:
+        logger.error(f"Report not found for user: {generator.username}")
+        raise HTTPException(status_code=400, detail="報告尚未生成")
 
 @app.post("/reprocess_content")
 async def reprocess_content(

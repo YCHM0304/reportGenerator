@@ -147,7 +147,7 @@ def register_user():
             token = response.json()["access_token"]
             set_access_token(token)
             st.success("Registration successful. You are now logged in.")
-            time.sleep(1)
+            time.sleep(3)
             st.rerun()
         else:
             st.error(f"Registration failed: {response.text}")
@@ -252,7 +252,7 @@ def generate_report(api_config):
                     st.session_state.num_titles = len(st.session_state.recommended_titles["段落標題"])
         else:
             st.error("Please enter a theme before generating titles.")
-        time.sleep(2)
+        time.sleep(3)
         st.session_state.generate_recommend_titles_clicked = False
         st.rerun()
 
@@ -279,6 +279,8 @@ def generate_report(api_config):
         - Definition of AI
         - Brief history of AI
         - Current applications of AI
+
+        **Be sure to fill in all fields before generating the report.**
         """)
 
     for i in range(st.session_state.num_titles):
@@ -338,7 +340,7 @@ def generate_report(api_config):
             else:
                 st.error(f"Error: {response.status_code} - {response.text}")
 
-        time.sleep(2)
+        time.sleep(3)
         st.session_state.generate_report_clicked = False
         st.session_state.report_checked = False
         st.rerun()
@@ -362,6 +364,8 @@ def get_report():
     if response.status_code == 200:
         result = response.json()
         st.json(result["result"])
+        # Add download button
+        download_report(headers)
     else:
         st.error(f"Error: {response.status_code} - {response.text}")
 
@@ -447,7 +451,7 @@ def reprocess_content(api_config):
                 st.error(f"Error: {response.status_code} - {response.text}")
                 st.session_state.reprocess_result = None
 
-        time.sleep(2)
+        time.sleep(3)
         st.session_state.reprocess_clicked = False
         st.rerun()
 
@@ -473,7 +477,7 @@ def reprocess_content(api_config):
                 st.session_state.reprocess_clicked = False
             else:
                 st.error(f"Error saving changes: {save_response.status_code} - {save_response.text}")
-        time.sleep(2)
+        time.sleep(3)
         st.rerun()
 
 def generate_and_reprocess_report(api_config):
@@ -520,6 +524,22 @@ def generate_and_reprocess_report(api_config):
 
     # 重新處理內容部分
     reprocess_content(api_config)
+
+def download_report(headers):
+    """
+    處理報告下載請求。
+    """
+    response = requests.get(f"{API_BASE_URL}/download_report", headers=headers)
+    if response.status_code == 200:
+        report_content = response.content
+        st.download_button(
+            label="Download the report",
+            data=report_content,
+            file_name="report.txt",
+            mime="text/plain"
+        )
+    else:
+        st.error(f"Error downloading report: {response.status_code} - {response.text}")
 
 # 登出
 def logout(access_token):
