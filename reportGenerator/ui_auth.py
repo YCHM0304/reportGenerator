@@ -350,6 +350,8 @@ def get_report():
         st.json(result["result"])
         # Add download button
         download_report(headers)
+    elif response.text == '{"detail":"報告尚未生成"}':
+        st.warning("Report not generated yet. Please generate a report first.")
     else:
         st.error(f"Error: {response.status_code} - {response.text}")
 
