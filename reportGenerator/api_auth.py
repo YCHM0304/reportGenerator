@@ -118,8 +118,8 @@ class Token(BaseModel):
     token_type: str
 
 class ReportRequest(BaseModel):
-    theme: str
-    titles: Dict[str, List[str]]
+    report_topic: str
+    main_sections: Dict[str, List[str]]
     links: List[str]
     openai_config: Optional[Dict[str, Any]]
     final_summary: Optional[bool] = True
@@ -182,13 +182,12 @@ class ReportGenerator:
         self.username = username
         self.final_result = {}
         self.report_config = {
-            "theme": "",
-            "titles": {},
+            "report_topic": "",
+            "main_sections": {},
             "links": []
         }
         self.model = "openai:gpt-4"
         self.openai_config = {}
-
 
     def load_openai(self) -> bool:
         # Delete old environment variables
@@ -211,8 +210,8 @@ class ReportGenerator:
 
     def generate_report(self, request: ReportRequest, reprocess: bool = False, more_info: str = None):
         if not more_info:
-            self.report_config["theme"] = request.theme
-            self.report_config["titles"] = request.titles.copy()
+            self.report_config["report_topic"] = request.report_topic
+            self.report_config["main_sections"] = request.main_sections.copy()
         self.report_config["links"] = request.links.copy()
         self.openai_config = request.openai_config or {}
 
@@ -258,34 +257,34 @@ class ReportGenerator:
         start_time = time.time()
 
         with concurrent.futures.ThreadPoolExecutor(max_workers=5) as executor:
-            for title, subtitle in request.titles.items():
-                format_prompt = f"以{request.theme}為主題，請你總結撰寫出與\"{title}\"相關的內容，其中需包含{subtitle}，不需要結論，不需要回應要求。" + f"另外，{more_info}" if reprocess else ""
-                logger.debug(f"Format prompt for title '{title}': {format_prompt}")
+            for main_section, subsections in request.main_sections.items():
+                format_prompt = f"以{request.report_topic}為主題，請你總結撰寫出與\"{main_section}\"相關的內容，其中需包含{subsections}，不需要結論，不需要回應要求。" + f"另外，{more_info}" if reprocess else ""
+                logger.debug(f"Format prompt for main section '{main_section}': {format_prompt}")
 
                 future_to_link = {executor.submit(process_link, link, format_prompt): link for link in request.links}
-                title_contexts = []
+                main_section_contexts = []
                 for future in concurrent.futures.as_completed(future_to_link):
                     link = future_to_link[future]
                     try:
                         summary = future.result()
                         if summary:
-                            title_contexts.append(summary)
+                            main_section_contexts.append(summary)
                     except Exception as exc:
                         print(f'{link} generated an exception: {exc}')
                         logger.error(f'{link} generated an exception: {exc}')
 
-                if title_contexts:
-                    logger.debug(f"Contexts for title '{title}': {title_contexts}")
+                if main_section_contexts:
+                    logger.debug(f"Contexts for main section '{main_section}': {main_section_contexts}")
                     response = self.QA.ask_self(
                         prompt=f"將此內容以客觀角度進行融合，避免使用\"報告中提到\"相關詞彙，避免修改專有名詞，避免做出總結，避免重複內容，直接撰寫內容，避免回應要求。",
-                        info=title_contexts,
+                        info=main_section_contexts,
                         model=self.model
                     )
-                    logger.debug(f"Generated content for title '{title}': {response}")
-                    result[title] = response
+                    logger.debug(f"Generated content for main section '{main_section}': {response}")
+                    result[main_section] = response
                 else:
-                    logger.warning(f"No content generated for title '{title}'")
-                    result[title] = "無法獲取相關內容"
+                    logger.warning(f"No content generated for main section '{main_section}'")
+                    result[main_section] = "無法獲取相關內容"
 
         previous_result = ""
         for value in result.values():
@@ -294,7 +293,7 @@ class ReportGenerator:
             logger.debug(f"Generating content summary")
             result["內容摘要"] = self.summary.summarize_articles(
                 articles=previous_result,
-                format_prompt=f"將內容以{request.theme}為主題進行摘要，將用字換句話說，意思不變，不需要結論，不需要回應要求。",
+                format_prompt=f"將內容以{request.report_topic}為主題進行摘要，將用字換句話說，意思不變，不需要結論，不需要回應要求。",
                 summary_len=500
             )
             logger.debug(f"Generated content summary: {result['內容摘要']}")
@@ -302,19 +301,19 @@ class ReportGenerator:
         self.final_result = result.copy()
         return self.final_result, total_time
 
-    def generate_recommend_titles(self, request: ReportRequest):
-        theme = request.theme
+    def generate_recommend_main_sections(self, request: ReportRequest):
+        report_topic = request.report_topic
         self.openai_config = request.openai_config or {}
         if not self.load_openai():
             raise HTTPException(status_code=400, detail="請提供OpenAI或Azure的API金鑰")
         self.QA = akasha.Doc_QA(model=self.model, max_doc_len=8000)
-        formatter = akasha.prompts.JSON_formatter_list(names=["段落標題", "段落次標題"], types=["list", "list"], descriptions=["每段段落標題", "每段多個段落次標題"])
+        formatter = akasha.prompts.JSON_formatter_list(names=["主要部分", "次要部分"], types=["list", "list"], descriptions=["每個主要部分", "每個主要部分的多個次要部分"])
         JSON_prompt = akasha.prompts.JSON_formatter(formatter)
         try:
-            logger.debug(f"Generating recommended titles for theme: {theme}")
-            generated_titles = self.QA.ask_self(
+            logger.debug(f"Generating recommended main sections for report topic: {report_topic}")
+            generated_main_sections = self.QA.ask_self(
                 system_prompt=JSON_prompt,
-                prompt=f"我想要寫一份報告，請以{theme}主題，幫我制定四個或五個段落標題，其中每個段落標題都有其各自的次標題，請參考以下範例，並回答。",
+                prompt=f"我想要寫一份報告，請以{report_topic}為主題，幫我制定四個或五個主要部分，其中每個主要部分都有其各自的次要部分，請參考以下範例，並回答。",
                 info="""
                     範例:
                     [給定主題]
@@ -334,11 +333,11 @@ class ReportGenerator:
                 """,
                 model=self.model
             )
-            logger.debug(f"Generated recommended titles: {generated_titles}")
+            logger.debug(f"Generated recommended main sections: {generated_main_sections}")
         except Exception as e:
-            logger.error(f"Error generating recommended titles: {str(e)}")
+            logger.error(f"Error generating recommended main sections: {str(e)}")
             raise HTTPException(status_code=400, detail=str(e))
-        return generated_titles
+        return generated_main_sections
 
     def save_result(self):
         with get_db() as db:
@@ -358,9 +357,9 @@ class ReportGenerator:
                 self.report_config = report.report_config
             if not self.final_result:
                 return False
-            if not self.report_config["theme"]:
+            if not self.report_config["report_topic"]:
                 return False
-            if not self.report_config["titles"]:
+            if not self.report_config["main_sections"]:
                 return False
             if not self.report_config["links"]:
                 return False
@@ -385,13 +384,13 @@ class ReportGenerator:
         self.summary = akasha.Summary(chunk_size=1000, max_doc_len=2000)
 
         if self.final_result != {}:
-            parts = [key for key in self.final_result.keys()]
+            main_sections = [key for key in self.final_result.keys()]
             new_request = self.QA.ask_self(
                 prompt=f"""使用者輸入了以下修改要求:
                     ----------------
                     {request.command}
                     ----------------
-                    從我提供的報告中所有的part和使用者的修改要求中找出使用者要求修改的部分為何，以及要如何修改。請按以下格式回覆:
+                    從我提供的報告中所有的主要部分和使用者的修改要求中找出使用者要求修改的部分為何，以及要如何修改。請按以下格式回覆:
 
                     修改部分: <修改部分>
                     修改內容: <修改內容>
@@ -414,7 +413,7 @@ class ReportGenerator:
                     請根據以上指示處理修改要求。
 
                     例子:
-                    假設給定的報告中的parts包含: 摘要, 前言, 方法, 結果, 討論, 結論
+                    假設給定的報告中的主要部分包含: 摘要, 前言, 方法, 結果, 討論, 結論
 
                     修改要求: "把摘要改成200字"
                     回覆:
@@ -442,18 +441,17 @@ class ReportGenerator:
                         修改部分: 摘要
                         修改內容: 加入研究目的並使整體更簡潔
                 """,
-                info=f"報告中包含以下part: {', '.join(parts)}",
-
+                info=f"報告中包含以下主要部分: {', '.join(main_sections)}",
                 model=self.model,
                 verbose=True
             )
 
             try:
-                part = new_request.split("修改部分: ")[1].split("\n修改內容: ")[0]
+                main_section = new_request.split("修改部分: ")[1].split("\n修改內容: ")[0]
                 mod_command = new_request.split("修改部分: ")[1].split("\n修改內容: ")[1]
-                logger.debug(f"Reprocessing part: {part}, with command: {mod_command}")
-                if part in self.final_result:
-                    previous_context = self.final_result[part]
+                logger.debug(f"Reprocessing main section: {main_section}, with command: {mod_command}")
+                if main_section in self.final_result:
+                    previous_context = self.final_result[main_section]
                     if request.user_decision is not None:
                         modification = "y" if request.user_decision else "n"
                     else:
@@ -499,7 +497,7 @@ class ReportGenerator:
                                 "requires_user_input": True,
                                 "input_type": "boolean",
                                 "input_question": "是否需要從原文重新爬取資料?",
-                                "part": part,
+                                "main_section": main_section,
                                 "mod_command": mod_command
                             }
                         )
@@ -508,18 +506,18 @@ class ReportGenerator:
                             self.report_config["links"] += request.links
                             print("Links added to report config")
                             print(self.report_config["links"])
-                        if part == "內容摘要":
+                        if main_section == "內容摘要":
                             raise HTTPException(status_code=400, detail="內容摘要無法重新爬取資料")
                         new_response = self.generate_report(
                             ReportRequest(
-                                theme=self.report_config["theme"],
-                                titles={part: self.report_config["titles"][part]},
+                                report_topic=self.report_config["report_topic"],
+                                main_sections={main_section: self.report_config["main_sections"][main_section]},
                                 links=self.report_config["links"],
                                 openai_config=self.openai_config
                             ),
                             reprocess=True,
                             more_info=mod_command
-                        )[0][part]
+                        )[0][main_section]
                         new_response = self.QA.ask_self(
                             prompt=f"將給定的兩個內容進行比較，將兩者不同的部分進行融合，成為一個新的內容，不需要結論，不需要回應要求。",
                             info=previous_context + "\n---\n" + new_response,
@@ -565,18 +563,18 @@ class ReportGenerator:
                             verbose=True
                         )
                     else:
-                        logger.error(f"Part not found: {part}")
+                        logger.error(f"Main section not found: {main_section}")
                         raise HTTPException(status_code=400, detail="無法確定是否需要重新爬取資料")
 
-                    modificatiom_result = {
+                    modification_result = {
                         "original_content": previous_context,
                         "modified_content": new_response,
-                        "part": part
+                        "main_section": main_section
                     }
-                    logger.debug(f"Modification result: {modificatiom_result}")
-                    return modificatiom_result
+                    logger.debug(f"Modification result: {modification_result}")
+                    return modification_result
                 else:
-                    raise HTTPException(status_code=400, detail=f"未找到指定的部分: {part}")
+                    raise HTTPException(status_code=400, detail=f"未找到指定的主要部分: {main_section}")
             except Exception as e:
                 logger.error(f"Error during content reprocessing: {str(e)}")
                 raise HTTPException(status_code=400, detail=str(e))
@@ -584,18 +582,15 @@ class ReportGenerator:
         return {
             "original_content": "...",
             "modified_content": "...",
-            "part": "..."
+            "main_section": "..."
         }
 
-    def update_content(self, part: str, new_content: str):
+    def update_content(self, main_section: str, new_content: str):
         """
-        更新報告中特定部分的內容並保存。
+        更新報告中特定主要部分的內容並保存。
         """
-        # if not self.load_result():
-        #     return False
-
-        if part in self.final_result:
-            self.final_result[part] = new_content
+        if main_section in self.final_result:
+            self.final_result[main_section] = new_content
             self.save_result()
             return True
         return False
@@ -654,11 +649,11 @@ async def generate_report(request: ReportRequest, generator: ReportGenerator = D
     logger.info(f"Report generated for user: {generator.username}. Total time: {total_time} seconds")
     return {"result": result, "total_time": total_time}
 
-@app.post("/generate_recommend_titles")
-async def generate_recommend_titles(request: ReportRequest, generator: ReportGenerator = Depends(get_report_generator)):
-    logger.info(f"Generating recommended titles for user: {generator.username}")
-    result = generator.generate_recommend_titles(request)
-    logger.info(f"Recommended titles generated for user: {generator.username}")
+@app.post("/generate_recommend_main_sections")
+async def generate_recommend_main_sections(request: ReportRequest, generator: ReportGenerator = Depends(get_report_generator)):
+    logger.info(f"Generating recommended main sections for user: {generator.username}")
+    result = generator.generate_recommend_main_sections(request)
+    logger.info(f"Recommended main sections generated for user: {generator.username}")
     return {"result": result}
 
 @app.get("/check_result")
@@ -676,20 +671,19 @@ async def get_report(generator: ReportGenerator = Depends(get_report_generator))
         logger.error(f"Report not found for user: {generator.username}")
         raise HTTPException(status_code=400, detail="報告尚未生成")
 
-# Add a new API endpoint
 @app.post("/save_reprocessed_content")
 async def save_reprocessed_content(
-    part: str = Body(...),
+    main_section: str = Body(...),
     new_content: str = Body(...),
     generator: ReportGenerator = Depends(get_report_generator)
 ):
     logger.info(f"Updating content for user: {generator.username}")
-    if generator.update_content(part, new_content):
+    if generator.update_content(main_section, new_content):
         logger.info(f"Content updated and saved for user: {generator.username}")
         return {"result": "Content updated and saved successfully"}
     else:
         logger.error(f"Failed to update content for user: {generator.username}")
-        raise HTTPException(status_code=400, detail="無法更新指定的部分")
+        raise HTTPException(status_code=400, detail="無法更新指定的主要部分")
 
 @app.get("/download_report")
 async def download_report(generator: ReportGenerator = Depends(get_report_generator)):
@@ -699,10 +693,10 @@ async def download_report(generator: ReportGenerator = Depends(get_report_genera
 
         # Generate report content
         report_content = io.StringIO()
-        report_content.write(f"Report for: {generator.report_config['theme']}\n\n")
+        report_content.write(f"Report for: {generator.report_config['report_topic']}\n\n")
 
-        for title, content in result.items():
-            report_content.write(f"# {title}\n\n")
+        for main_section, content in result.items():
+            report_content.write(f"# {main_section}\n\n")
             report_content.write(f"{content}\n\n")
 
         # Create a StreamingResponse
