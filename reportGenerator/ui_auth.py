@@ -141,16 +141,20 @@ def register_user():
     st.header("User Registration")
     username = st.text_input("Username")
     password = st.text_input("Password", type="password")
+    confirm_password = st.text_input("Confirm Password", type="password")
     if st.button("Register"):
-        response = requests.post(f"{API_BASE_URL}/register", json={"username": username, "password": password})
-        if response.status_code == 200:
-            token = response.json()["access_token"]
-            set_access_token(token)
-            st.success("Registration successful. You are now logged in.")
-            time.sleep(3)
-            st.rerun()
+        if password == confirm_password:
+            response = requests.post(f"{API_BASE_URL}/register", json={"username": username, "password": password})
+            if response.status_code == 200:
+                token = response.json()["access_token"]
+                set_access_token(token)
+                st.success("Registration successful. You are now logged in.")
+                time.sleep(3)
+                st.rerun()
+            else:
+                st.error(f"Registration failed: {response.text}")
         else:
-            st.error(f"Registration failed: {response.text}")
+            st.error("Passwords do not match.")
 
 # 用戶登入
 def login_user():
