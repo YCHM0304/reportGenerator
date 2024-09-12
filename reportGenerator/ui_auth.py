@@ -4,6 +4,11 @@ import time
 import json
 import os
 
+st.set_page_config(
+        page_title="Traditional Chinese Report Generator",
+        page_icon="📝" ,
+)
+
 if not os.environ.get("API_BASE_URL"):
     API_BASE_URL = "http://127.0.0.1:8000"
 else:
