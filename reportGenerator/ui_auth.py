@@ -123,6 +123,9 @@ def register_user():
     password = st.text_input("Password", type="password")
     confirm_password = st.text_input("Confirm Password", type="password")
     if st.button("Register"):
+        if not username or not password or not confirm_password:
+            st.error("Please fill in all fields.")
+            return
         if password == confirm_password:
             response = requests.post(f"{API_BASE_URL}/register", json={"username": username, "password": password})
             if response.status_code == 200:
