@@ -159,7 +159,10 @@ def login_user():
             time.sleep(2)
             st.rerun()
         else:
-            st.error(f"Login failed: {response.text}")
+            if response.text == '{"detail":"Incorrect username or password"}':
+                st.error("Incorrect username or password.")
+            else:
+                st.error(f"Login failed: {response.text}")
 
 def generate_recommend_main_sections(api_config, report_topic):
     data = {
@@ -440,6 +443,11 @@ def reprocess_content(api_config):
             elif response.status_code == 200:
                 st.session_state.reprocess_result = response.json()['result']
                 st.success("Content reprocessed successfully.")
+            elif response.status_code == 400:
+                        if response.text == '{"detail":"請先使用generate_report生成報告"}':
+                            st.warning("Please generate a report first.")
+                        elif response.text == '{"detail":"請提供OpenAI或Azure的API金鑰"}':
+                            st.warning("Please provide OpenAI or Azure API key.")
             else:
                 st.error(f"Error: {response.status_code} - {response.text}")
                 st.session_state.reprocess_result = None
