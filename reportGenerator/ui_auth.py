@@ -148,6 +148,9 @@ def login_user():
     username = st.text_input("Username")
     password = st.text_input("Password", type="password")
     if st.button("Login"):
+        if not username or not password:
+            st.error("Please fill in all fields.")
+            return
         response = requests.post(f"{API_BASE_URL}/token", data={"username": username, "password": password})
         if response.status_code == 200:
             token = response.json()["access_token"]
