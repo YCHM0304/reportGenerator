@@ -393,6 +393,9 @@ def reprocess_content(api_config):
         if not command:
             st.error("Command is required.")
             return
+        if more_info_from_links and not links_list:
+            st.error("Please enter at least one link.")
+            return
         st.session_state.reprocess_clicked = True
         st.rerun()
 
