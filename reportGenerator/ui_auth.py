@@ -298,9 +298,10 @@ def generate_report(api_config):
         if main_section and subsections:
             main_sections_dict[main_section] = subsections.split('\n')
 
+    st.info("**Note**: *Some of the links may not be accessible due to the policy of the website.*")
     links = st.text_area("Enter links (one per line)")
     links_list = links.split('\n') if links else []
-    final_summary = st.checkbox("Generate final summary", value=True, help="Generate an extra final summary based on the generated contents.")
+    final_summary = st.toggle("Generate final summary", value=True, help="Generate an extra final summary based on the generated contents.")
     col1, col2 = st.columns(2)
     with col1:
         generate_report_clicked = st.button("Generate Report", key="generate_report", disabled=st.session_state.generate_report_clicked or st.session_state.reprocess_clicked, use_container_width=True)
@@ -386,7 +387,7 @@ def reprocess_content(api_config):
         Request more than one main section will result in an error.
     """)
     command = st.text_input("Enter the command for reprocess", value=st.session_state.reprocess_command)
-    more_info_from_links = st.checkbox("Additional Information Source URLs", value=False, help='Add more URLs to expand the data sources for your report.')
+    more_info_from_links = st.toggle("Additional Information Source URLs", value=False, help='Add more URLs to expand the data sources for your report.')
     if more_info_from_links:
         links = st.text_area("Enter links (one per line)", key=more_info_from_links)
         links_list = links.split('\n') if links else []
@@ -544,12 +545,24 @@ def download_report(headers):
     else:
         st.error(f"Error downloading report: {response.status_code} - {response.text}")
 
+def get_predefined_styles():
+    """
+    返回預定義的風格選項列表。
+    """
+    return [
+        {"name": "專業", "description": "使用正式、客觀的語言，適合商業報告"},
+        {"name": "通俗易懂", "description": "使用簡單、直白的語言，適合大眾閱讀"},
+        {"name": "學術", "description": "使用專業術語和引用，適合學術論文"},
+        {"name": "幽默", "description": "加入輕鬆、有趣的表達，適合非正式場合"},
+        {"name": "激勵", "description": "使用鼓舞人心的語言，適合演講稿"},
+    ]
+
 def logout(access_token):
     """
     創建註銷界面，允許用戶登出當前會話。
     處理註銷請求並清除訪問令牌。
     """
-    delete_report = st.sidebar.checkbox("Delete report when logging out")
+    delete_report = st.sidebar.toggle("Delete report when logging out")
     if st.sidebar.button("Logout"):
         clear_access_token()
         clear_api_config()
