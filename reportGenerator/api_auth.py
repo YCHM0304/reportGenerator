@@ -16,6 +16,7 @@ from bs4 import BeautifulSoup
 from fastapi.responses import JSONResponse, StreamingResponse
 from fastapi import FastAPI, HTTPException, Depends, Header, Body
 from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
+from pathlib import Path
 from passlib.context import CryptContext
 from pydantic import BaseModel
 from PyPDF2 import PdfReader
@@ -28,7 +29,7 @@ def custom_namer(default_name):
     return f"{base_filename}.{date}.{ext}"
 
 def setup_logging(tz_offset=8):  # 默認為 UTC+8（台北時間）
-    log_path = os.environ.get('LOG_PATH', '/app/logs/fastapi_backend.log')
+    log_path = os.environ.get('LOG_PATH', str(Path.cwd()) + '/logs/fastapi_backend.log')
     log_dir = os.path.dirname(log_path)
 
     if not os.path.exists(log_dir):
@@ -220,37 +221,55 @@ class ReportGenerator:
 
         result = {}
         self.QA = akasha.Doc_QA(model=self.model, max_doc_len=8000)
-        self.summary = akasha.Summary(chunk_size=1000, max_doc_len=2000)
+        self.summary = akasha.Summary(chunk_size=1000, max_doc_len=4000)
 
         def process_link(link, format_prompt):
             try:
-                response = requests.get(link)
+                headers = {
+                    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36"
+                }
+                response = requests.get(link, headers=headers)
                 response.raise_for_status()
+                time.sleep(1)  # 添加延遲以避免頻繁請求
 
                 if link.lower().endswith('.pdf'):
-                    # Handle PDF file
+                    # 處理 PDF 文件
                     pdf_file = io.BytesIO(response.content)
                     pdf_reader = PdfReader(pdf_file)
                     texts = ""
                     for page in pdf_reader.pages:
                         texts += page.extract_text()
                 else:
-                    # Handle HTML content
+                    # 處理 HTML 內容
                     soup = BeautifulSoup(response.content, 'html.parser')
-                    texts = soup.get_text()
+
+                    # 移除不相關的元素
+                    for elem in soup(['script', 'style', 'nav', 'footer', 'iframe']):
+                        elem.decompose()
+
+                    # 尋找主要內容
+                    main_content = soup.find('main') or soup.find('article') or soup.find('div', class_='content')
+
+                    if main_content:
+                        texts = main_content.get_text(separator='\n', strip=True)
+                    else:
+                        # 如果找不到主要內容，則使用所有段落文本
+                        texts = '\n'.join([p.get_text(strip=True) for p in soup.find_all('p')])
+
+                # 移除多餘的空白行和空格
+                texts = '\n'.join(line.strip() for line in texts.split('\n') if line.strip())
 
                 summary = self.summary.summarize_articles(
                     articles=texts,
                     format_prompt=format_prompt,
+                    summary_len=1000
                 )
                 logger.debug(f"Summary generated for link {link}: {summary}")
                 return summary
             except requests.exceptions.RequestException as e:
-                print(f"Error fetching content from {link}: {str(e)}")
                 logger.error(f"Error fetching content from {link}: {str(e)}")
                 return ""
             except Exception as e:
-                print(f"Error processing content from {link}: {str(e)}")
                 logger.error(f"Error processing content from {link}: {str(e)}")
                 return ""
 
@@ -298,7 +317,7 @@ class ReportGenerator:
             result["內容摘要"] = self.summary.summarize_articles(
                 articles=previous_result,
                 format_prompt=f"將內容以{request.report_topic}為主題進行摘要，將用字換句話說，意思不變，不需要結論，不需要回應要求。",
-                summary_len=500
+                summary_len=1000
             )
             logger.debug(f"Generated content summary: {result['內容摘要']}")
         total_time = time.time() - start_time
@@ -385,7 +404,7 @@ class ReportGenerator:
             raise HTTPException(status_code=400, detail="請提供OpenAI或Azure的API金鑰")
 
         self.QA = akasha.Doc_QA(model=self.model, max_doc_len=8000)
-        self.summary = akasha.Summary(chunk_size=1000, max_doc_len=2000)
+        self.summary = akasha.Summary(chunk_size=1000, max_doc_len=4000)
 
         if self.final_result != {}:
             main_sections = [key for key in self.final_result.keys()]
