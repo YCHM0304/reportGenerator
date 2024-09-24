@@ -130,6 +130,7 @@ class ReprocessContentRequest(BaseModel):
     openai_config: Optional[Dict[str, Any]]
     links: Optional[List[str]]
     user_decision: Optional[bool] = None
+    style_selection: Optional[str] = None
 
 def verify_password(plain_password, hashed_password):
     return pwd_context.verify(plain_password, hashed_password)
@@ -209,7 +210,7 @@ class ReportGenerator:
             return True
         return False
 
-    def generate_report(self, request: ReportRequest, is_final_summary: bool = True, more_info: str = None):
+    def generate_report(self, request: ReportRequest, is_final_summary: bool = True, more_info: str = None, style_selection: str = None):
         if not more_info:
             self.report_config["report_topic"] = request.report_topic
             self.report_config["main_sections"] = request.main_sections.copy()
@@ -299,7 +300,7 @@ class ReportGenerator:
                 if main_section_contexts:
                     logger.debug(f"Contexts for main section '{main_section}': {main_section_contexts}")
                     response = self.QA.ask_self(
-                        prompt=f"將此內容以客觀角度進行融合，避免使用\"報告中提到\"相關詞彙，避免修改專有名詞，避免做出總結，避免重複內容，直接撰寫內容，避免回應要求。",
+                        prompt=f"將此內容以客觀角度進行融合，避免使用\"報告中提到\"相關詞彙，避免修改專有名詞，避免做出總結，避免重複內容，直接撰寫內容，避免回應要求。" + (f"以要求風格進行撰寫: {style_selection}" if style_selection else ""),
                         info=main_section_contexts,
                         model=self.model
                     )
@@ -538,10 +539,11 @@ class ReportGenerator:
                                 links=self.report_config["links"],
                                 openai_config=self.openai_config
                             ),
-                            more_info=mod_command
+                            more_info=mod_command,
+                            style_selection=request.style_selection
                         )[0][main_section]
                         new_response = self.QA.ask_self(
-                            prompt=f"將給定的兩個內容進行比較，將兩者不同的部分進行融合，成為一個新的內容，不需要結論，不需要回應要求。",
+                            prompt=f"將給定的兩個內容進行比較，將兩者不同的部分進行融合，成為一個新的內容，不需要結論，不需要回應要求。" + (f"風格需保持一致({request.style_selection})。" if request.style_selection else "") ,
                             info=previous_context + "\n---\n" + new_response,
                             model=self.model,
                             verbose=True
@@ -579,7 +581,7 @@ class ReportGenerator:
                                 要求：去除跟亞洲有關資料。
                                 輸出：
                                 台灣的電池產業發展迅速，主要市場區域包括美洲和歐洲。
-                            """,
+                            """ + (f"\n依照指定風格進行撰寫: {request.style_selection}" if request.style_selection else ""),
                             info=previous_context,
                             model=self.model,
                             verbose=True
@@ -597,6 +599,9 @@ class ReportGenerator:
                     return modification_result
                 else:
                     raise HTTPException(status_code=400, detail=f"未找到指定的主要部分: {main_section}")
+            except HTTPException as http_ex:
+                logger.error(f"Error during content reprocessing: {http_ex}")
+                raise http_ex
             except Exception as e:
                 logger.error(f"Error during content reprocessing: {str(e)}")
                 raise HTTPException(status_code=400, detail=str(e))

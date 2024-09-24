@@ -211,6 +211,7 @@ def reset_states():
     st.session_state.reprocess_clicked = False
     st.session_state.reprocess_command = ""
     st.session_state.reprocess_result = None
+    st.session_state.detail = None
     st.session_state.num_main_sections = 1
     st.session_state.generate_recommend_main_sections_clicked = False
 
@@ -387,6 +388,10 @@ def reprocess_content(api_config):
         Request more than one main section will result in an error.
     """)
     command = st.text_input("Enter the command for reprocess", value=st.session_state.reprocess_command)
+
+    # Style selection
+    style_selection = style_selection_ui()
+
     more_info_from_links = st.toggle("Additional Information Source URLs", value=False, help='Add more URLs to expand the data sources for your report.')
     if more_info_from_links:
         links = st.text_area("Enter links (one per line)", key=more_info_from_links)
@@ -418,34 +423,18 @@ def reprocess_content(api_config):
         data = {
             "command": command,
             "openai_config": api_config,
-            "links": links_list if more_info_from_links else None
+            "links": links_list if more_info_from_links else None,
+            "style_selection": style_selection
         }
 
         headers = {"Authorization": f"Bearer {access_token}"} if access_token else {}
         with st.spinner("Reprocessing report..."):
             response = requests.post(f"{API_BASE_URL}/reprocess_content", json=data, headers=headers)
             if response.status_code == 422 and "requires_user_input" in response.json().get("detail", {}):
-                # 處理"unknown"
-                detail = response.json()["detail"]
-                st.warning(detail["message"])
-                user_decision = st.radio(
-                    detail["input_question"],
-                    options=["Yes", "No"],
-                    key="user_decision"
-                )
-
-                if st.button("Submit"):
-                    user_decision_bool = user_decision == "Yes"
-                    data["user_decision"] = user_decision_bool
-                    response = requests.post(f"{API_BASE_URL}/reprocess_content", json=data, headers=headers)
-
-                    if response.status_code == 200:
-                        st.session_state.reprocess_result = response.json()['result']
-                        st.success("Content reprocessed successfully.")
-                    else:
-                        st.error(f"Error: {response.status_code} - {response.text}")
-                        st.session_state.reprocess_result = None
-
+                if response.json()["detail"]["requires_user_input"]:
+                    st.session_state.user_decision_required = True
+                    st.session_state.detail = response.json()["detail"]
+                    st.rerun()
             elif response.status_code == 200:
                 st.session_state.reprocess_result = response.json()['result']
                 st.success("Content reprocessed successfully.")
@@ -461,6 +450,37 @@ def reprocess_content(api_config):
         time.sleep(3)
         st.session_state.reprocess_clicked = False
         st.rerun()
+
+    if st.session_state.get('user_decision_required', False):
+        detail = st.session_state.detail
+        st.warning(detail["message"])
+        user_decision = st.radio(
+            detail["input_question"],
+            options=["Yes", "No"],
+            key="user_decision"
+        )
+
+        if st.button("Submit Decision"):
+            user_decision_bool = user_decision == "Yes"
+            data = {
+                "command": st.session_state.reprocess_command,
+                "openai_config": api_config,
+                "links": links_list if more_info_from_links else None,
+                "style_selection": style_selection,
+                "user_decision": user_decision_bool
+            }
+            headers = {"Authorization": f"Bearer {access_token}"} if access_token else {}
+            with st.spinner("Reprocessing report with user decision..."):
+                response = requests.post(f"{API_BASE_URL}/reprocess_content", json=data, headers=headers)
+
+            if response.status_code == 200:
+                st.session_state.reprocess_result = response.json()['result']
+                st.success("Content reprocessed successfully.")
+            else:
+                st.error(f"Error: {response.status_code} - {response.text}")
+
+            st.session_state.user_decision_required = False
+            st.rerun()
 
     if st.session_state.reprocess_result:
         result = st.session_state.reprocess_result
@@ -556,6 +576,34 @@ def get_predefined_styles():
         {"name": "幽默", "description": "加入輕鬆、有趣的表達，適合非正式場合"},
         {"name": "激勵", "description": "使用鼓舞人心的語言，適合演講稿"},
     ]
+
+def style_selection_ui():
+    col1, col2 = st.columns(2)
+
+    with col1:
+        style_option = st.radio(
+            "Select a style option",
+            ["Original Style", "Predefined Style", "Custom Style", "AI-generated Style"],
+            help="Select the style option for the reprocessing command."
+        )
+
+    selected_style = None
+
+    with col2:
+        if style_option == "Predefined Style":
+            styles = get_predefined_styles()
+            selected_style = st.selectbox(
+                "Select a predefined style",
+                options=[style["name"] for style in styles],
+                format_func=lambda x: f"{x} - {next(style['description'] for style in styles if style['name'] == x)}"
+            )
+
+        elif style_option == "Custom Style":
+            custom_style = st.text_area("Describe your custom style", help="e.g. 正式且專業")
+            if custom_style:
+                selected_style = custom_style
+
+    return selected_style
 
 def logout(access_token):
     """
