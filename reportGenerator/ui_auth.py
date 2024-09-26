@@ -3,6 +3,9 @@ import requests
 import time
 import json
 import os
+import io
+from PyPDF2 import PdfReader
+import base64
 
 st.set_page_config(
         page_title="Traditional Chinese Report Generator",
@@ -391,6 +394,12 @@ def reprocess_content(api_config):
 
     # Style selection
     style_selection = style_selection_ui()
+    if style_selection is not None:
+        if style_selection.startswith("AI: "):
+            example_text = style_selection[4:]
+            style_selection = None
+        else:
+            example_text = None
 
     more_info_from_links = st.toggle("Additional Information Source URLs", value=False, help='Add more URLs to expand the data sources for your report.')
     if more_info_from_links:
@@ -424,7 +433,8 @@ def reprocess_content(api_config):
             "command": command,
             "openai_config": api_config,
             "links": links_list if more_info_from_links else None,
-            "style_selection": style_selection
+            "style_selection": style_selection,
+            "example_text": example_text
         }
 
         headers = {"Authorization": f"Bearer {access_token}"} if access_token else {}
@@ -577,6 +587,19 @@ def get_predefined_styles():
         {"name": "激勵", "description": "使用鼓舞人心的語言，適合演講稿"},
     ]
 
+def extract_text_from_file(uploaded_file):
+    if uploaded_file.type == "text/plain":
+        return uploaded_file.getvalue().decode("utf-8")
+    elif uploaded_file.type == "application/pdf":
+        pdf_reader = PdfReader(io.BytesIO(uploaded_file.getvalue()))
+        text = ""
+        for page in pdf_reader.pages:
+            text += page.extract_text()
+        return text
+    else:
+        st.error("Unsupported file type")
+        return None
+
 def style_selection_ui():
     col1, col2 = st.columns(2)
 
@@ -584,6 +607,12 @@ def style_selection_ui():
         style_option = st.radio(
             "Select a style option",
             ["Original Style", "Predefined Style", "Custom Style", "AI-generated Style"],
+            captions=[
+                "Use the original style of the content.",
+                "Select a predefined style from the list.",
+                "Describe your custom style.",
+                "Let AI generate a style based on the content."
+            ],
             help="Select the style option for the reprocessing command."
         )
 
@@ -602,6 +631,16 @@ def style_selection_ui():
             custom_style = st.text_area("Describe your custom style", help="e.g. 正式且專業")
             if custom_style:
                 selected_style = custom_style
+        elif style_option == "AI-generated Style":
+            st.info("AI-generated style will be selected automatically based on the content.")
+            uploaded_file = st.file_uploader("Upload an example file for AI to generate the report with the similar style", type=["txt", "pdf"])
+            if uploaded_file:
+                example_text = extract_text_from_file(uploaded_file)
+                if example_text:
+                    selected_style = "AI: " + example_text
+                    st.success("Uploaded file processed successfully.")
+                else:
+                    st.error("Failed to extract text from the uploaded file.")
 
     return selected_style
 

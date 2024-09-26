@@ -131,6 +131,7 @@ class ReprocessContentRequest(BaseModel):
     links: Optional[List[str]]
     user_decision: Optional[bool] = None
     style_selection: Optional[str] = None
+    example_text: Optional[str] = None
 
 def verify_password(plain_password, hashed_password):
     return pwd_context.verify(plain_password, hashed_password)
@@ -397,6 +398,7 @@ class ReportGenerator:
                 db.commit()
 
     def reprocess_content(self, request: ReprocessContentRequest):
+        style_selection = request.style_selection
         if not self.final_result:
             raise HTTPException(status_code=400, detail="請先使用generate_report生成報告")
 
@@ -406,6 +408,69 @@ class ReportGenerator:
 
         self.QA = akasha.Doc_QA(model=self.model, max_doc_len=8000)
         self.summary = akasha.Summary(chunk_size=1000, max_doc_len=4000)
+        if request.style_selection:
+            style_selection = f"根據指定的風格進行生成: {request.style_selection}"
+        if request.example_text:
+            formatter = akasha.prompts.JSON_formatter_list(names=["正式程度", "語氣", "結構", "其他風格"], types=["str", "str", "str", "str"], descriptions=["文章的正式程度", "文章的語氣", "文章的結構", "文章的其他風格"])
+            JSON_prompt = akasha.prompts.JSON_formatter(formatter)
+            style_analysis = self.QA.ask_self(
+                system_prompt=JSON_prompt,
+                prompt="""針對提供的內文進行詳細的風格分析，並提供以下方面的具體描述：
+                    1. 語言風格：
+                    - 正式程度（例如：非常正式、中等正式、非正式）
+                    - 用詞選擇（例如：專業術語、日常用語、文學性詞彙）
+                    - 句子結構（例如：簡短明瞭、複雜長句、變化多樣）
+
+                    2. 語氣：
+                    - 整體語氣（例如：客觀中立、熱情積極、嚴肅審慎）
+                    - 情感表達（例如：理性分析、感性描述、幽默風趣）
+
+                    3. 內容組織：
+                    - 結構特點（例如：層次分明、邏輯嚴謹、自由流暢）
+                    - 論述方式（例如：說理論證、舉例說明、比較對比）
+
+                    4. 特殊修辭手法：
+                    - 使用的修辭技巧（例如：比喻、誇張、反問）
+                    - 特殊表達方式（例如：引用、數據支持、個人觀點）
+
+                    5. 目標讀者：
+                    - 預設的讀者群（例如：專業人士、普通大眾、學生）
+                    - 專業知識要求（例如：高度專業、中等理解難度、通俗易懂）
+
+                    6. 文體特徵：
+                    - 文章類型（例如：學術論文、新聞報導、說明文檔）
+                    - 特定領域風格（例如：科技文章、文學作品、商業報告）
+
+                    請根據以上幾點進行全面分析，並提供具體例子支持你的觀察。最後，總結這篇文章的整體風格特點，以便用於指導後續內容的生成。""",
+                info=request.example_text,
+                model=self.model,
+                verbose=True
+            )
+            style_analysis = json.loads(style_analysis)
+            style_selection = f"""請按照以下風格指南修改內容：
+
+                1. 正式程度：{style_analysis["正式程度"]}
+                - 調整用詞和句式以符合此正式程度。
+
+                2. 語氣：{style_analysis["語氣"]}
+                - 確保整體語氣一致，包括情感表達和論述方式。
+
+                3. 結構：{style_analysis["結構"]}
+                - 遵循這種結構特點，包括段落組織和論述邏輯。
+
+                4. 其他風格特點：{style_analysis["其他風格"]}
+                - 注意運用適當的修辭手法和表達方式。
+                - 考慮目標讀者的需求和預期的專業知識水平。
+                - 確保內容符合指定的文體特徵。
+
+                在進行修改時，請確保：
+                - 保持原文的核心信息和主要觀點。
+                - 調整表達方式以符合上述風格要求。
+                - 不要添加原文中沒有的新信息。
+                - 如果某些風格要求與原文內容不兼容，優先保持原文的實質內容。
+
+                請直接輸出修改後的內容，不需要額外的解釋或說明。
+            """
 
         if self.final_result != {}:
             main_sections = [key for key in self.final_result.keys()]
@@ -540,10 +605,10 @@ class ReportGenerator:
                                 openai_config=self.openai_config
                             ),
                             more_info=mod_command,
-                            style_selection=request.style_selection
+                            style_selection=style_selection
                         )[0][main_section]
                         new_response = self.QA.ask_self(
-                            prompt=f"將給定的兩個內容進行比較，將兩者不同的部分進行融合，成為一個新的內容，不需要結論，不需要回應要求。" + (f"風格需保持一致({request.style_selection})。" if request.style_selection else "") ,
+                            prompt=f"將給定的兩個內容進行比較，將兩者不同的部分進行融合，成為一個新的內容，不需要結論，不需要回應要求。" + (f"{style_selection}。" if style_selection else "") ,
                             info=previous_context + "\n---\n" + new_response,
                             model=self.model,
                             verbose=True
@@ -567,6 +632,7 @@ class ReportGenerator:
 
                                 修改要求:
                                 {mod_command}
+                                {style_selection if style_selection else ""}
 
                                 範例1（無法達成要求）：
                                 原始內容：台灣的電池產業發展迅速，主要市場區域包括亞洲、美洲和歐洲。
@@ -581,7 +647,7 @@ class ReportGenerator:
                                 要求：去除跟亞洲有關資料。
                                 輸出：
                                 台灣的電池產業發展迅速，主要市場區域包括美洲和歐洲。
-                            """ + (f"\n依照指定風格進行撰寫: {request.style_selection}" if request.style_selection else ""),
+                            """,
                             info=previous_context,
                             model=self.model,
                             verbose=True
