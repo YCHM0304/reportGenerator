@@ -305,6 +305,7 @@ def generate_report(api_config):
     st.info("**Note**: *Some of the links may not be accessible due to the policy of the website.*")
     links = st.text_area("Enter links (one per line)")
     links_list = links.split('\n') if links else []
+    links_list = [link for link in links_list if link]
     final_summary = st.toggle("Generate final summary", value=True, help="Generate an extra final summary based on the generated contents.")
     col1, col2 = st.columns(2)
     with col1:
@@ -405,6 +406,7 @@ def reprocess_content(api_config):
     if more_info_from_links:
         links = st.text_area("Enter links (one per line)", key=more_info_from_links)
         links_list = links.split('\n') if links else []
+        links_list = [link for link in links_list if link]
 
     col1, col2 = st.columns(2)
     with col1:
