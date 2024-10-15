@@ -736,6 +736,7 @@ def get_report_generator(current_user: User = Depends(get_current_user)):
 @app.post("/generate_report")
 async def generate_report(request: ReportRequest, generator: ReportGenerator = Depends(get_report_generator)):
     logger.info(f"Generating report for user: {generator.username}")
+    logger.info(f"Request: {request}")
     result, total_time = generator.generate_report(request, is_final_summary=request.final_summary)
     generator.save_result()
     total_time = "%.2f" % total_time
