@@ -395,12 +395,11 @@ def reprocess_content(api_config):
 
     # Style selection
     style_selection = style_selection_ui()
+    example_text = None
     if style_selection is not None:
         if style_selection.startswith("AI: "):
             example_text = style_selection[4:]
             style_selection = None
-        else:
-            example_text = None
 
     more_info_from_links = st.toggle("Additional Information Source URLs", value=False, help='Add more URLs to expand the data sources for your report.')
     if more_info_from_links:
