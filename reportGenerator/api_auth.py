@@ -340,6 +340,7 @@ class ReportGenerator:
                 system_prompt=JSON_prompt,
                 prompt=f"我想要寫一份報告，請以{report_topic}為主題，幫我制定四個或五個主要部分，其中每個主要部分都有其各自的次要部分，請參考以下範例，並回答。",
                 info="""
+                    要求: 字典中每個元素的資料類型為字串
                     範例:
                     [給定主題]
                     電池產業的發展趨勢
