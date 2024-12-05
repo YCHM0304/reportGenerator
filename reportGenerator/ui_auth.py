@@ -435,8 +435,8 @@ def generate_report(api_config):
 
 def get_report():
     """
-    創建獲取報告界面，允許用戶查看、編輯和下載之前生成的報告。
-    使用類似於生成推薦主要段落的方式來處理編輯功能。
+    創建獲取報告界面，允許用戶查看和編輯報告內容，但標題部分只能查看不能編輯。
+    報告的編輯功能專注於內容的修改，保持結構的一致性。
     """
     st.session_state.current_page = 'get_report'
     st.header("Get Report")
@@ -495,26 +495,27 @@ def get_report():
 
         # 顯示編輯界面
         if st.session_state.edit_report_clicked and st.session_state.editing_sections:
-            st.info("Edit the sections below. Click 'Save Changes' when finished.")
+            st.info("Edit the content below. Section titles are displayed for reference and cannot be modified.")
             edited_content = {}
 
             # 為每個段落創建編輯區域
             for i in range(len(st.session_state.editing_sections["主要部分"])):
-                col1, col2 = st.columns(2)
-                with col1:
-                    section_title = st.text_input(
-                        f"Section Title {i+1}",
-                        value=st.session_state.editing_sections["主要部分"][i],
-                        key=f"section_title_{i}"
-                    )
-                with col2:
-                    section_content = st.text_area(
-                        f"Content for Section {i+1}",
+                # 使用expander來組織每個部分，標題作為expander的標籤
+                with st.expander(f"Section {i+1}: {st.session_state.editing_sections['主要部分'][i]}", expanded=True):
+                    # 顯示標題（不可編輯）
+                    st.markdown(f"**{st.session_state.editing_sections['主要部分'][i]}**")
+
+                    # 編輯內容
+                    content = st.text_area(
+                        "Edit Content",
                         value=st.session_state.editing_sections["內容"][i],
-                        height=200,
-                        key=f"section_content_{i}"
+                        height=300,
+                        key=f"section_content_{i}",
+                        help="Modify the content while keeping the section structure"
                     )
-                edited_content[section_title] = section_content
+
+                    # 儲存這個部分的內容
+                    edited_content[st.session_state.editing_sections["主要部分"][i]] = content
 
             if st.button("Save Changes", type="primary"):
                 save_success = True
