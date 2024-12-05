@@ -215,13 +215,30 @@ def reset_states():
     st.session_state.reprocess_command = ""
     st.session_state.reprocess_result = None
     st.session_state.detail = None
-    st.session_state.num_main_sections = 1
+    # st.session_state.num_main_sections = 1
     st.session_state.generate_recommend_main_sections_clicked = False
 
 def generate_report(api_config):
     st.header("Generate Report")
 
-    report_topic = st.text_input("Enter the report topic")
+    # Initialize session state variables if they don't exist
+    if 'report_topic' not in st.session_state:
+        st.session_state.report_topic = ""
+    if 'links_input' not in st.session_state:
+        st.session_state.links_input = ""
+    if 'final_summary' not in st.session_state:
+        st.session_state.final_summary = True
+    if 'main_sections_data' not in st.session_state:
+        st.session_state.main_sections_data = {}
+
+    # Report topic input with session state
+    report_topic = st.text_input(
+        "Enter the report topic",
+        value=st.session_state.report_topic,
+        key="report_topic_input"
+    )
+    # Update session state when input changes
+    st.session_state.report_topic = report_topic
 
     if 'recommended_main_sections' not in st.session_state:
         st.session_state.recommended_main_sections = None
@@ -229,14 +246,21 @@ def generate_report(api_config):
     if 'num_main_sections' not in st.session_state:
         st.session_state.num_main_sections = 1
 
+    # Generate recommended sections buttons
     col1, col2 = st.columns(2)
     with col1:
-        generate_recommend_main_sections_clicked = st.button("Generate Recommended Main Sections", disabled=st.session_state.generate_recommend_main_sections_clicked or st.session_state.generate_report_clicked or st.session_state.reprocess_clicked, help="Generate recommended main sections based on the report topic.")
+        generate_recommend_main_sections_clicked = st.button(
+            "Generate Recommended Main Sections",
+            disabled=st.session_state.generate_recommend_main_sections_clicked or st.session_state.generate_report_clicked or st.session_state.reprocess_clicked,
+            help="Generate recommended main sections based on the report topic."
+        )
 
     with col2:
         if st.button("Reset Main Sections", disabled=st.session_state.generate_recommend_main_sections_clicked):
             st.session_state.recommended_main_sections = None
             st.session_state.num_main_sections = 1
+            # Clear the stored main sections data
+            st.session_state.main_sections_data = {}
 
     if generate_recommend_main_sections_clicked:
         st.session_state.generate_recommend_main_sections_clicked = True
@@ -246,13 +270,14 @@ def generate_report(api_config):
         if report_topic:
             st.session_state.recommended_main_sections = generate_recommend_main_sections(api_config, report_topic)
             if st.session_state.recommended_main_sections:
-                    st.session_state.num_main_sections = len(st.session_state.recommended_main_sections["主要部分"])
+                st.session_state.num_main_sections = len(st.session_state.recommended_main_sections["主要部分"])
         else:
             st.error("Please enter a report topic before generating main sections.")
         time.sleep(3)
         st.session_state.generate_recommend_main_sections_clicked = False
         st.rerun()
 
+    # Add/Remove section buttons
     col1, col2 = st.columns(2)
     with col1:
         if st.button("Add Main Section"):
@@ -260,8 +285,13 @@ def generate_report(api_config):
     with col2:
         if st.button("Remove Main Section") and st.session_state.num_main_sections > 1:
             st.session_state.num_main_sections -= 1
-
-    main_sections_dict = {}
+            # Remove the last section's data from session state
+            last_section_key = f"main_section_{st.session_state.num_main_sections}"
+            last_subsections_key = f"subsections_{st.session_state.num_main_sections}"
+            if last_section_key in st.session_state.main_sections_data:
+                del st.session_state.main_sections_data[last_section_key]
+            if last_subsections_key in st.session_state.main_sections_data:
+                del st.session_state.main_sections_data[last_subsections_key]
 
     st.info("""
         **Main Sections and Subsections Guide:**
@@ -275,53 +305,107 @@ def generate_report(api_config):
         Main Section: "Introduction to AI"
 
         Subsections:
-
         - Definition of AI
-
         - Brief history of AI
-
         - Current applications of AI
 
         **Be sure to fill in all fields before generating the report.**
-        """)
+    """)
 
+    main_sections_dict = {}
+
+    # Create main sections with persistent values
     for i in range(st.session_state.num_main_sections):
         col1, col2 = st.columns(2)
         with col1:
             main_section_key = f"main_section_{i}"
             default_main_section = ""
+
+            # Get value from recommended sections if available
             if st.session_state.recommended_main_sections and i < len(st.session_state.recommended_main_sections["主要部分"]):
                 default_main_section = st.session_state.recommended_main_sections["主要部分"][i]
-            main_section = st.text_input(f"Main Section {i+1}", key=main_section_key, value=default_main_section)
+            # Otherwise get from session state if available
+            elif main_section_key in st.session_state.main_sections_data:
+                default_main_section = st.session_state.main_sections_data[main_section_key]
+
+            main_section = st.text_input(
+                f"Main Section {i+1}",
+                value=default_main_section,
+                key=f"main_section_input_{i}"
+            )
+            # Store in session state
+            st.session_state.main_sections_data[main_section_key] = main_section
+
         with col2:
             subsections_key = f"subsections_{i}"
             default_subsections = ""
+
+            # Get value from recommended sections if available
             if st.session_state.recommended_main_sections and i < len(st.session_state.recommended_main_sections["次要部分"]):
                 default_subsections = "\n".join(st.session_state.recommended_main_sections["次要部分"][i])
-            subsections = st.text_area(f"Subsections for Main Section {i+1} (one per line)", key=subsections_key, value=default_subsections)
+            # Otherwise get from session state if available
+            elif subsections_key in st.session_state.main_sections_data:
+                default_subsections = st.session_state.main_sections_data[subsections_key]
+
+            subsections = st.text_area(
+                f"Subsections for Main Section {i+1} (one per line)",
+                value=default_subsections,
+                key=f"subsections_input_{i}"
+            )
+            # Store in session state
+            st.session_state.main_sections_data[subsections_key] = subsections
+
         if main_section and subsections:
             main_sections_dict[main_section] = subsections.split('\n')
 
     st.info("**Note**: *Some of the links may not be accessible due to the policy of the website.*")
-    links = st.text_area("Enter links (one per line)")
+    default_links = st.session_state.links_input
+    # Links input with session state
+    links = st.text_area(
+        "Enter links (one per line)",
+        value=default_links,
+        key="links_input_key"
+    )
+    st.session_state.links_input = links
+
     links_list = links.split('\n') if links else []
     links_list = [link for link in links_list if link]
-    final_summary = st.toggle("Generate final summary", value=True, help="Generate an extra final summary based on the generated contents.")
+
+    # Final summary toggle with session state
+    final_summary = st.toggle(
+        "Generate final summary",
+        value=st.session_state.final_summary,
+        help="Generate an extra final summary based on the generated contents.",
+        key="final_summary_toggle"
+    )
+    # Update session state when toggle changes
+    st.session_state.final_summary = final_summary
+
     col1, col2 = st.columns(2)
     with col1:
-        generate_report_clicked = st.button("Generate Report", key="generate_report", disabled=st.session_state.generate_report_clicked or st.session_state.reprocess_clicked, use_container_width=True)
+        generate_report_clicked = st.button(
+            "Generate Report",
+            key="generate_report",
+            disabled=st.session_state.generate_report_clicked or st.session_state.reprocess_clicked,
+            use_container_width=True
+        )
     with col2:
-        reset = st.button("Reset All", key="reset_all", use_container_width=True, disabled=st.session_state.generate_report_clicked or st.session_state.reprocess_clicked)
+        if st.button("Reset All", key="reset_all", use_container_width=True, disabled=st.session_state.generate_report_clicked or st.session_state.reprocess_clicked):
+            # Clear all stored form data
+            st.session_state.report_topic = ""
+            st.session_state.links_input = ""
+            st.session_state.final_summary = True
+            st.session_state.main_sections_data = {}
+            st.session_state.num_main_sections = 1
+            reset_states()
+            st.session_state.recommended_main_sections = None
+            st.rerun()
 
     if generate_report_clicked:
         if not report_topic or not main_sections_dict or not links_list:
             st.error("Please fill in all fields.")
             return
         st.session_state.generate_report_clicked = True
-        st.rerun()
-    if reset:
-        reset_states()
-        st.session_state.recommended_main_sections = None
         st.rerun()
 
     if st.session_state.generate_report_clicked:
