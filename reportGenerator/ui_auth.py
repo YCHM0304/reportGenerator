@@ -351,8 +351,8 @@ def generate_report(api_config):
 
 def get_report():
     """
-    創建獲取報告界面，允許用戶獲取之前生成的報告。
-    處理獲取報告請求並顯示結果。
+    創建獲取報告界面，允許用戶查看、編輯和下載之前生成的報告。
+    使用類似於生成推薦主要段落的方式來處理編輯功能。
     """
     st.session_state.current_page = 'get_report'
     st.header("Get Report")
@@ -362,13 +362,96 @@ def get_report():
         st.warning("Please login first.")
         return
 
+    # 初始化編輯狀態
+    if 'editing_sections' not in st.session_state:
+        st.session_state.editing_sections = None
+    if 'edit_report_clicked' not in st.session_state:
+        st.session_state.edit_report_clicked = False
+
     headers = {"Authorization": f"Bearer {access_token}"} if access_token else {}
     response = requests.get(f"{API_BASE_URL}/get_report", headers=headers)
+
     if response.status_code == 200:
         result = response.json()
-        st.json(result["result"])
-        # Add download button
-        download_report(headers)
+
+        # 創建按鈕列
+        col1, col2 = st.columns(2)
+        with col1:
+            edit_button = st.button(
+                "Edit Report",
+                disabled=st.session_state.edit_report_clicked,
+                use_container_width=True
+            )
+
+        with col2:
+            if st.button("Cancel", use_container_width=True, disabled=not st.session_state.edit_report_clicked):
+                st.session_state.editing_sections = None
+                st.session_state.edit_report_clicked = False
+                st.rerun()
+
+        # 顯示原始報告內容
+        if not st.session_state.editing_sections:
+            st.json(result["result"])
+            download_report(headers)
+
+        # 處理編輯按鈕點擊
+        if edit_button:
+            st.session_state.edit_report_clicked = True
+            # 將報告內容轉換為可編輯格式
+            report_content = result["result"]
+            st.session_state.editing_sections = {
+                "主要部分": [],
+                "內容": []
+            }
+            for section, content in report_content.items():
+                if section not in ["report_topic", "timestamp"]:
+                    st.session_state.editing_sections["主要部分"].append(section)
+                    st.session_state.editing_sections["內容"].append(content)
+            st.rerun()
+
+        # 顯示編輯界面
+        if st.session_state.edit_report_clicked and st.session_state.editing_sections:
+            st.info("Edit the sections below. Click 'Save Changes' when finished.")
+            edited_content = {}
+
+            # 為每個段落創建編輯區域
+            for i in range(len(st.session_state.editing_sections["主要部分"])):
+                col1, col2 = st.columns(2)
+                with col1:
+                    section_title = st.text_input(
+                        f"Section Title {i+1}",
+                        value=st.session_state.editing_sections["主要部分"][i],
+                        key=f"section_title_{i}"
+                    )
+                with col2:
+                    section_content = st.text_area(
+                        f"Content for Section {i+1}",
+                        value=st.session_state.editing_sections["內容"][i],
+                        height=200,
+                        key=f"section_content_{i}"
+                    )
+                edited_content[section_title] = section_content
+
+            if st.button("Save Changes", type="primary"):
+                save_success = True
+                for section, content in edited_content.items():
+                    save_data = {
+                        "main_section": section,
+                        "new_content": content
+                    }
+                    headers = {"Authorization": f"Bearer {access_token}"} if access_token else {}
+                    save_response = requests.post(f"{API_BASE_URL}/save_reprocessed_content", json=save_data, headers=headers)
+                    if save_response.status_code != 200:
+                        save_success = False
+                        st.error(f"Error saving changes for section '{section}': {save_response.status_code} - {save_response.text}")
+                if save_success:
+                    st.success("Changes saved successfully.")
+                    # Reset state for the next reprocessing
+                    st.session_state.editing_sections = None
+                    st.session_state.edit_report_clicked = False
+                    time.sleep(2)
+                    st.rerun()
+
     elif response.text == '{"detail":"報告尚未生成"}':
         st.warning("Report not generated yet. Please generate a report first.")
     else:
