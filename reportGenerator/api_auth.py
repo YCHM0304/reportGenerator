@@ -409,7 +409,7 @@ class ReportGenerator:
         self.QA = akasha.Doc_QA(model=self.model, max_doc_len=8000)
         self.summary = akasha.Summary(chunk_size=1000, max_doc_len=4000)
         if request.style_selection:
-            style_selection = f"根據指定的風格進行生成: {request.style_selection}"
+            style_selection = f"根據指定的語氣風格進行生成: {request.style_selection}"
         if request.example_text:
             formatter = akasha.prompts.JSON_formatter_list(names=["正式程度", "語氣", "結構", "其他風格"], types=["str", "str", "str", "str"], descriptions=["文章的正式程度", "文章的語氣", "文章的結構", "文章的其他風格"])
             JSON_prompt = akasha.prompts.JSON_formatter(formatter)
@@ -616,6 +616,10 @@ class ReportGenerator:
                     elif modification == "n":
                         new_response = self.QA.ask_self(
                             prompt=f"""
+                                修改要求:
+                                {mod_command}
+                                {style_selection if style_selection else ""}
+
                                 請根據以下指示修改給定內容：
 
                                 1. 閱讀提供的原始內容和修改要求。
@@ -626,13 +630,10 @@ class ReportGenerator:
 
                                 3. 若無法達成修改要求：
                                 - 輸出 "無法達成要求，因此不做任何修改"
-                                - 換行後重複輸出原始內容
+                                - 輸出無法達成的原因
 
                                 4. 不要撰寫或添加任何未在原始內容中提及的新資訊
 
-                                修改要求:
-                                {mod_command}
-                                {style_selection if style_selection else ""}
 
                                 範例1（無法達成要求）：
                                 原始內容：台灣的電池產業發展迅速，主要市場區域包括亞洲、美洲和歐洲。
@@ -640,7 +641,7 @@ class ReportGenerator:
                                 輸出：
                                 無法達成要求，因此不做任何修改
 
-                                台灣的電池產業發展迅速，主要市場區域包括亞洲、美洲和歐洲。
+                                無法達成的原因：原始內容中並未提及非洲市場區域。
 
                                 範例2（可以達成要求）：
                                 原始內容：台灣的電池產業發展迅速，主要市場區域包括亞洲、美洲和歐洲。
