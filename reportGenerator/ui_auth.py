@@ -439,7 +439,7 @@ def get_report():
     報告的編輯功能專注於內容的修改，保持結構的一致性。
     """
     st.session_state.current_page = 'get_report'
-    st.header("Get Report")
+    st.header("View and Edit report")
 
     access_token = get_access_token()
     if not access_token:
@@ -476,7 +476,17 @@ def get_report():
         # 顯示原始報告內容
         if not st.session_state.editing_sections:
             st.json(result["result"])
-            download_report(headers)
+            download_container = st.container()
+            with download_container:
+                col1, col2 = st.columns([2, 1])
+                with col1:
+                    download_report(headers)
+                with col2:
+                    if st.button("Back to Report Generation", use_container_width=True):
+                        # 清除重定向標記
+                        if 'redirect_to_report' in st.session_state:
+                            del st.session_state.redirect_to_report
+                        st.rerun()
 
         # 處理編輯按鈕點擊
         if edit_button:
@@ -719,7 +729,12 @@ def generate_and_reprocess_report(api_config):
         st.session_state.report_checked = True
 
     if st.session_state.report_exists:
-        st.success("Generated report found. To check the report, go to 'Get Report' page.")
+        st.success("Generated report found. Click the button to check the report.")
+        _, col2 = st.columns([2, 1])
+        with col2:
+             if st.button("View and Edit Report", use_container_width=True):
+                st.session_state.redirect_to_report = True
+                st.rerun()
 
     # 生成報告部分
     generate_report(api_config)
@@ -740,7 +755,8 @@ def download_report(headers):
             label="Download the report",
             data=report_content,
             file_name="report.txt",
-            mime="text/plain"
+            mime="text/plain",
+            type="primary"
         )
     else:
         st.error(f"Error downloading report: {response.status_code} - {response.text}")
@@ -844,8 +860,9 @@ def main():
         menu = ["Login", "Register"]
         choice = st.sidebar.selectbox("Menu", menu)
     else:
-        menu = ["Generate and Reprocess Report", "Get Report"]
-        choice = st.sidebar.selectbox("Menu", menu)
+        # 檢查是否需要重定向到報告頁面
+        choice = "Get Report" if st.session_state.get('redirect_to_report', False) else "Generate and Reprocess Report"
+
         logout(access_token)
 
     if choice == "Login":
