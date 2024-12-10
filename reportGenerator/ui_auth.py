@@ -741,7 +741,7 @@ def reprocess_content(api_config):
         st.subheader("Modified content:")
         st.write(result['modified_content'])
 
-        if st.button("Save Changes"):
+        if st.button("Save Changes", type="primary"):
             save_data = {
                 "main_section": result['main_section'],
                 "new_content": result['modified_content']
@@ -908,8 +908,6 @@ def logout(access_token):
 def main():
     st.title("Report Generator")
 
-    api_config = setup_api()
-
     access_token = get_access_token()
     if not access_token:
         choice = "Sign Up" if st.session_state.get('redirect_to_signup', False) else "Login"
@@ -917,16 +915,20 @@ def main():
         # 檢查是否需要重定向到報告頁面
         choice = "Get Report" if st.session_state.get('redirect_to_report', False) else "Generate and Reprocess Report"
 
-        logout(access_token)
 
     if choice == "Login":
         login_user()
     elif choice == "Sign Up":
         register_user()
     elif choice == "Generate and Reprocess Report":
+        api_config = setup_api()
+        logout(access_token)
         generate_and_report_status(api_config)
     elif choice == "Get Report":
+        api_config = setup_api()
+        logout(access_token)
         get_report(api_config)
+
 
 if __name__ == "__main__":
     main()
