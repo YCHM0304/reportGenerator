@@ -467,7 +467,7 @@ def generate_report(api_config):
 
 def get_report(api_config):
     """
-    創建獲取報告界面，允許用戶查看和編輯報告內容，但標題部分只能查看不能編輯。
+    創建獲取報告界面，允許用戶查看和編輯報告內容。
     報告的編輯功能專注於內容的修改，保持結構的一致性。
     """
     st.session_state.current_page = 'get_report'
@@ -504,7 +504,7 @@ def get_report(api_config):
                 )
 
             with col2:
-                if  st.session_state.edit_report_clicked:
+                if st.session_state.edit_report_clicked:
                     if st.button("Cancel", use_container_width=True):
                         st.session_state.editing_sections = None
                         st.session_state.edit_report_clicked = False
@@ -519,9 +519,29 @@ def get_report(api_config):
         if st.session_state.reprocess_report_clicked:
             reprocess_content(api_config)
 
-        # 顯示原始報告內容
+        # 顯示報告內容（改進的部分）
         if not st.session_state.editing_sections and not st.session_state.reprocess_report_clicked:
-            st.json(result["result"])
+            report_data = result["result"]
+
+            # 使用卡片式布局顯示報告內容
+            st.subheader("Report Details")
+
+            # 顯示報告主題和時間戳（如果存在）
+            if "report_topic" in report_data:
+                st.markdown(f"**Topic:** {report_data['report_topic']}")
+            if "timestamp" in report_data:
+                st.markdown(f"**Generated at:** {report_data['timestamp']}")
+
+            # 為每個報告部分創建展開區域
+            for section, content in report_data.items():
+                if section not in ["report_topic", "timestamp"]:
+                    with st.expander(f"📑 {section}", expanded=True):
+                        # 使用markdown顯示內容，保持格式
+                        st.markdown(content)
+                        # 添加分隔線
+                        st.divider()
+
+            # 下載和返回按鈕
             download_container = st.container()
             with download_container:
                 col1, col2 = st.columns([2, 1])
@@ -529,15 +549,13 @@ def get_report(api_config):
                     download_report(headers)
                 with col2:
                     if st.button("Back to Report Generation", use_container_width=True):
-                        # 清除重定向標記
                         if 'redirect_to_report' in st.session_state:
                             del st.session_state.redirect_to_report
                         st.rerun()
 
-        # 處理編輯按鈕點擊
+        # 編輯功能保持不變
         if edit_button:
             st.session_state.edit_report_clicked = True
-            # 將報告內容轉換為可編輯格式
             report_content = result["result"]
             st.session_state.editing_sections = {
                 "主要部分": [],
@@ -549,19 +567,13 @@ def get_report(api_config):
                     st.session_state.editing_sections["內容"].append(content)
             st.rerun()
 
-        # 顯示編輯界面
         if st.session_state.edit_report_clicked and st.session_state.editing_sections:
             st.info("Edit the content below.")
             edited_content = {}
 
-            # 為每個段落創建編輯區域
             for i in range(len(st.session_state.editing_sections["主要部分"])):
-                # 使用expander來組織每個部分，標題作為expander的標籤
                 with st.expander(f"Section {i+1}: {st.session_state.editing_sections['主要部分'][i]}", expanded=True):
-                    # 顯示標題（不可編輯）
                     new_section = st.text_input("Edit Section", value=f"{st.session_state.editing_sections['主要部分'][i]}")
-
-                    # 編輯內容
                     new_content = st.text_area(
                         "Edit Content",
                         value=st.session_state.editing_sections["內容"][i],
@@ -569,8 +581,6 @@ def get_report(api_config):
                         key=f"section_content_{i}",
                         help="Modify the content while keeping the section structure"
                     )
-
-                    # 儲存這個部分的內容
                     edited_content[new_section] = new_content
 
             if st.button("Save Changes", type="primary"):
@@ -588,7 +598,6 @@ def get_report(api_config):
                         st.error(f"Error saving changes for section '{section}': {save_response.status_code} - {save_response.text}")
                 if save_success:
                     st.success("Changes saved successfully.")
-                    # Reset state for the next reprocessing
                     st.session_state.editing_sections = None
                     st.session_state.edit_report_clicked = False
                     time.sleep(2)
@@ -758,7 +767,6 @@ def generate_and_report_status(api_config):
     elif st.session_state.current_page != 'generate_and_report_status':
         reset_states()
         st.session_state.current_page = 'generate_and_report_status'
-    st.header("Generate and Reprocess Report")
 
     access_token = get_access_token()
     if not access_token:
