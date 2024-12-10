@@ -505,7 +505,7 @@ def get_report():
 
         # 顯示編輯界面
         if st.session_state.edit_report_clicked and st.session_state.editing_sections:
-            st.info("Edit the content below. Section titles are displayed for reference and cannot be modified.")
+            st.info("Edit the content below.")
             edited_content = {}
 
             # 為每個段落創建編輯區域
