@@ -75,10 +75,15 @@ def setup_api():
     """
     initialize_session_state()
 
+    # 使用 on_change 回調來更新 session_state
+    def update_api_type():
+        st.session_state.api_config['api_type'] = st.session_state.api_type
+
     api_type = st.sidebar.selectbox(
         "Select the API to use",
         ["OpenAI", "Azure"],
         key="api_type",
+        on_change=update_api_type,
         index=0 if st.session_state.api_config['api_type'] == 'OpenAI' else 1
     )
 
@@ -130,22 +135,35 @@ def register_user():
     username = st.text_input("Username")
     password = st.text_input("Password", type="password")
     confirm_password = st.text_input("Confirm Password", type="password")
-    if st.button("Register"):
-        if not username or not password or not confirm_password:
-            st.error("Please fill in all fields.")
-            return
-        if password == confirm_password:
-            response = requests.post(f"{API_BASE_URL}/register", json={"username": username, "password": password})
-            if response.status_code == 200:
-                token = response.json()["access_token"]
-                set_access_token(token)
-                st.success("Registration successful. You are now logged in.")
-                time.sleep(2)
+
+    # 將成功訊息的位置移到外層
+    message_container = st.empty()
+
+    signup_container = st.container()
+    with signup_container:
+        col1, _, col3 = st.columns([1, 3, 2])
+        with col1:
+            if st.button("Sign Up", type="primary", use_container_width=True):
+                if not username or not password or not confirm_password:
+                    message_container.error("Please fill in all fields.")
+                    return
+                if password == confirm_password:
+                    response = requests.post(f"{API_BASE_URL}/register", json={"username": username, "password": password})
+                    if response.status_code == 200:
+                        token = response.json()["access_token"]
+                        set_access_token(token)
+                        message_container.success("Registration successful. You are now logged in.")
+                        time.sleep(2)
+                        st.rerun()
+                    else:
+                        message_container.error(f"Registration failed: {response.text}")
+                else:
+                    message_container.error("Passwords do not match.")
+        with col3:
+            if st.button("I already have an account", use_container_width=True):
+                if "redirect_to_signup" in st.session_state:
+                    del st.session_state.redirect_to_signup
                 st.rerun()
-            else:
-                st.error(f"Registration failed: {response.text}")
-        else:
-            st.error("Passwords do not match.")
 
 def login_user():
     """
@@ -155,22 +173,36 @@ def login_user():
     st.header("User Login")
     username = st.text_input("Username")
     password = st.text_input("Password", type="password")
-    if st.button("Login"):
-        if not username or not password:
-            st.error("Please fill in all fields.")
-            return
-        response = requests.post(f"{API_BASE_URL}/token", data={"username": username, "password": password})
-        if response.status_code == 200:
-            token = response.json()["access_token"]
-            set_access_token(token)
-            st.success("Login successful.")
-            time.sleep(2)
-            st.rerun()
-        else:
-            if response.text == '{"detail":"Incorrect username or password"}':
-                st.error("Incorrect username or password.")
-            else:
-                st.error(f"Login failed: {response.text}")
+
+    # 將成功訊息的位置移到外層
+    message_container = st.empty()
+
+    signin_container = st.container()
+    with signin_container:
+        col1, _, col3 = st.columns([1, 3, 1])
+        with col1:
+            if st.button("Login", type="primary", use_container_width=True):
+                if not username or not password:
+                    message_container.error("Please fill in all fields.")
+                    time.sleep(2)
+                    st.rerun()
+                response = requests.post(f"{API_BASE_URL}/token", data={"username": username, "password": password})
+                if response.status_code == 200:
+                    token = response.json()["access_token"]
+                    set_access_token(token)
+                    message_container.success("Login successful.")
+                    time.sleep(2)
+                    st.rerun()
+                else:
+                    if response.text == '{"detail":"Incorrect username or password"}':
+                        message_container.error("Incorrect username or password.")
+                    else:
+                        message_container.error(f"Login failed: {response.text}")
+        with col3:
+            if st.button("Sign Up", use_container_width=True):
+                st.session_state.redirect_to_signup = True
+                st.rerun()
+
 
 def generate_recommend_main_sections(api_config, report_topic):
     data = {
@@ -857,8 +889,7 @@ def main():
 
     access_token = get_access_token()
     if not access_token:
-        menu = ["Login", "Register"]
-        choice = st.sidebar.selectbox("Menu", menu)
+        choice = "Sign Up" if st.session_state.get('redirect_to_signup', False) else "Login"
     else:
         # 檢查是否需要重定向到報告頁面
         choice = "Get Report" if st.session_state.get('redirect_to_report', False) else "Generate and Reprocess Report"
@@ -867,7 +898,7 @@ def main():
 
     if choice == "Login":
         login_user()
-    elif choice == "Register":
+    elif choice == "Sign Up":
         register_user()
     elif choice == "Generate and Reprocess Report":
         generate_and_reprocess_report(api_config)
