@@ -680,16 +680,45 @@ class ReportGenerator:
             "main_section": "..."
         }
 
-    def update_content(self, main_section: str, new_content: str):
+    def update_content(self, main_section: str, new_content: str, edit_mode: bool = False):
         """
         更新報告中特定主要部分的內容並保存。
-        """
-        if main_section in self.final_result:
-            self.final_result[main_section] = new_content
-            self.save_result()
-            return True
-        return False
 
+        Args:
+            main_section: 要更新的段落名稱
+            new_content: 新的內容
+            edit_mode: 是否在編輯模式下運行
+
+        Returns:
+            bool: 更新是否成功
+
+        Raises:
+            ValueError: 當 final_result 為空時
+        """
+        if not self.final_result:
+            raise ValueError("No content to update")
+
+        try:
+            if edit_mode:
+                # 在編輯模式下，重命名第一個 key
+                if len(self.final_result) > 0:
+                    first_key = list(self.final_result.keys())[0]
+                    self.final_result[main_section] = self.final_result.pop(first_key)
+                    self.final_result[main_section] = new_content
+                    self.save_result()
+                    return True
+                return False
+            else:
+                # 在正常模式下，直接更新指定的段落
+                if main_section in self.final_result:
+                    self.final_result[main_section] = new_content
+                    self.save_result()
+                    return True
+                return False
+
+        except Exception as e:
+            logger.error(f"Error updating content: {str(e)}")
+            return False
 
 user_sessions: Dict[str, ReportGenerator] = {}
 
@@ -771,10 +800,11 @@ async def get_report(generator: ReportGenerator = Depends(get_report_generator))
 async def save_reprocessed_content(
     main_section: str = Body(...),
     new_content: str = Body(...),
+    edit_mode: bool = Body(False),
     generator: ReportGenerator = Depends(get_report_generator)
 ):
     logger.info(f"Updating content for user: {generator.username}")
-    if generator.update_content(main_section, new_content):
+    if generator.update_content(main_section, new_content, edit_mode):
         logger.info(f"Content updated and saved for user: {generator.username}")
         return {"result": "Content updated and saved successfully"}
     else:

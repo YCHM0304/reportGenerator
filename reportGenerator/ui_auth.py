@@ -503,10 +503,10 @@ def get_report():
                 # 使用expander來組織每個部分，標題作為expander的標籤
                 with st.expander(f"Section {i+1}: {st.session_state.editing_sections['主要部分'][i]}", expanded=True):
                     # 顯示標題（不可編輯）
-                    st.markdown(f"**{st.session_state.editing_sections['主要部分'][i]}**")
+                    new_section = st.text_input("Edit Section", value=f"{st.session_state.editing_sections['主要部分'][i]}")
 
                     # 編輯內容
-                    content = st.text_area(
+                    new_content = st.text_area(
                         "Edit Content",
                         value=st.session_state.editing_sections["內容"][i],
                         height=300,
@@ -515,14 +515,15 @@ def get_report():
                     )
 
                     # 儲存這個部分的內容
-                    edited_content[st.session_state.editing_sections["主要部分"][i]] = content
+                    edited_content[new_section] = new_content
 
             if st.button("Save Changes", type="primary"):
                 save_success = True
                 for section, content in edited_content.items():
                     save_data = {
                         "main_section": section,
-                        "new_content": content
+                        "new_content": content,
+                        "edit_mode": True
                     }
                     headers = {"Authorization": f"Bearer {access_token}"} if access_token else {}
                     save_response = requests.post(f"{API_BASE_URL}/save_reprocessed_content", json=save_data, headers=headers)
