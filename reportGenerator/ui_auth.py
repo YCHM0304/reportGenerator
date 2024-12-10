@@ -241,10 +241,9 @@ def reset_states():
     """
     st.session_state.current_page = 'generate_and_report_status'
     st.session_state.generate_report_clicked = False
-    st.session_state.reprocess_report_clicked = False
     st.session_state.recommended_main_sections = None
     st.session_state.reprocess_clicked = False
-    st.session_state.reprocess_command = ""
+    st.session_state.reprocess_command = None
     st.session_state.reprocess_result = None
     st.session_state.detail = None
     # st.session_state.num_main_sections = 1
