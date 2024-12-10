@@ -239,7 +239,7 @@ def reset_states():
     重置所有相關的 session_state 變量到其初始狀態。
     這用於清理和重置應用程序的狀態。
     """
-    st.session_state.current_page = 'generate_and_reprocess_report'
+    st.session_state.current_page = 'generate_and_report_status'
     st.session_state.generate_report_clicked = False
     st.session_state.reprocess_report_clicked = False
     st.session_state.recommended_main_sections = None
@@ -465,13 +465,12 @@ def generate_report(api_config):
         st.session_state.report_checked = False
         st.rerun()
 
-def get_report():
+def get_report(api_config):
     """
     創建獲取報告界面，允許用戶查看和編輯報告內容，但標題部分只能查看不能編輯。
     報告的編輯功能專注於內容的修改，保持結構的一致性。
     """
     st.session_state.current_page = 'get_report'
-    st.header("View and Edit report")
 
     access_token = get_access_token()
     if not access_token:
@@ -483,30 +482,45 @@ def get_report():
         st.session_state.editing_sections = None
     if 'edit_report_clicked' not in st.session_state:
         st.session_state.edit_report_clicked = False
+    if 'reprocess_report_clicked' not in st.session_state:
+        st.session_state.reprocess_report_clicked = False
+
+    if not st.session_state.reprocess_report_clicked:
+        st.header("View and Edit report")
 
     headers = {"Authorization": f"Bearer {access_token}"} if access_token else {}
     response = requests.get(f"{API_BASE_URL}/get_report", headers=headers)
 
     if response.status_code == 200:
         result = response.json()
+        if not st.session_state.reprocess_report_clicked:
+            # 創建按鈕列
+            col1, col2 = st.columns(2)
+            with col1:
+                edit_button = st.button(
+                    "Edit Report",
+                    disabled=st.session_state.edit_report_clicked,
+                    use_container_width=True
+                )
 
-        # 創建按鈕列
-        col1, col2 = st.columns(2)
-        with col1:
-            edit_button = st.button(
-                "Edit Report",
-                disabled=st.session_state.edit_report_clicked,
-                use_container_width=True
-            )
+            with col2:
+                if  st.session_state.edit_report_clicked:
+                    if st.button("Cancel", use_container_width=True):
+                        st.session_state.editing_sections = None
+                        st.session_state.edit_report_clicked = False
+                        st.rerun()
+                else:
+                    if st.button("Edit with AI", use_container_width=True):
+                        st.session_state.reprocess_report_clicked = True
+                        st.rerun()
+        else:
+            edit_button = False
 
-        with col2:
-            if st.button("Cancel", use_container_width=True, disabled=not st.session_state.edit_report_clicked):
-                st.session_state.editing_sections = None
-                st.session_state.edit_report_clicked = False
-                st.rerun()
+        if st.session_state.reprocess_report_clicked:
+            reprocess_content(api_config)
 
         # 顯示原始報告內容
-        if not st.session_state.editing_sections:
+        if not st.session_state.editing_sections and not st.session_state.reprocess_report_clicked:
             st.json(result["result"])
             download_container = st.container()
             with download_container:
@@ -620,9 +634,15 @@ def reprocess_content(api_config):
 
     col1, col2 = st.columns(2)
     with col1:
-        reprocess_button = st.button("Reprocess Report", disabled=st.session_state.reprocess_clicked or st.session_state.generate_report_clicked, use_container_width=True)
+        reprocess_button = st.button("Reprocess Report", disabled=st.session_state.reprocess_clicked or st.session_state.generate_report_clicked, use_container_width=True, type="primary")
     with col2:
         reset_button = st.button("Reset", use_container_width=True, disabled=st.session_state.reprocess_clicked or st.session_state.generate_report_clicked)
+
+    _, col2 = st.columns(2)
+    with col2:
+        if st.button("Cancel", use_container_width=True, disabled=st.session_state.reprocess_clicked):
+            st.session_state.reprocess_report_clicked = False
+            st.rerun()
 
     if reprocess_button:
         if not command:
@@ -729,15 +749,15 @@ def reprocess_content(api_config):
         time.sleep(3)
         st.rerun()
 
-def generate_and_reprocess_report(api_config):
+def generate_and_report_status(api_config):
     """
     結合生成報告和重新處理內容的功能。
     """
     if 'current_page' not in st.session_state:
-        st.session_state.current_page = 'generate_and_reprocess_report'
-    elif st.session_state.current_page != 'generate_and_reprocess_report':
+        st.session_state.current_page = 'generate_and_report_status'
+    elif st.session_state.current_page != 'generate_and_report_status':
         reset_states()
-        st.session_state.current_page = 'generate_and_reprocess_report'
+        st.session_state.current_page = 'generate_and_report_status'
     st.header("Generate and Reprocess Report")
 
     access_token = get_access_token()
@@ -770,11 +790,6 @@ def generate_and_reprocess_report(api_config):
 
     # 生成報告部分
     generate_report(api_config)
-
-    st.markdown("---")  # 分隔線
-
-    # 重新處理內容部分
-    reprocess_content(api_config)
 
 def download_report(headers):
     """
@@ -901,9 +916,9 @@ def main():
     elif choice == "Sign Up":
         register_user()
     elif choice == "Generate and Reprocess Report":
-        generate_and_reprocess_report(api_config)
+        generate_and_report_status(api_config)
     elif choice == "Get Report":
-        get_report()
+        get_report(api_config)
 
 if __name__ == "__main__":
     main()
