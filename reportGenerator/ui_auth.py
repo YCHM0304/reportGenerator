@@ -701,7 +701,8 @@ def reprocess_content(api_config):
             key="links_input",
             on_change=update_additional_links
         )
-        links_list = [link for link in links.split('\n') if link]
+        if links:
+            links_list = [link for link in links.split('\n') if link]
 
     # 按鈕區域
     col1, col2 = st.columns(2)
