@@ -746,6 +746,7 @@ def reprocess_content(api_config):
 
     if st.session_state.reprocess_clicked:
         st.session_state.reprocess_clicked = True
+        st.session_state.reprocess_result = None
         st.session_state.reprocess_command = command
         data = {
             "command": command,
