@@ -758,22 +758,25 @@ def reprocess_content(api_config):
         headers = {"Authorization": f"Bearer {access_token}"} if access_token else {}
         with st.spinner("Reprocessing report..."):
             response = requests.post(f"{API_BASE_URL}/reprocess_content", json=data, headers=headers)
-            if response.status_code == 422 and "requires_user_input" in response.json().get("detail", {}):
-                if response.json()["detail"]["requires_user_input"]:
+            response_json = response.json()
+            if response.status_code == 422 and "requires_user_input" in response_json:
+                if response_json["requires_user_input"]:
                     st.session_state.user_decision_required = True
-                    st.session_state.detail = response.json()["detail"]
+                    st.session_state.reprocess_clicked = False
+                    st.session_state.detail = response_json
                     st.rerun()
             elif response.status_code == 200:
                 st.session_state.reprocess_result = response.json()['result']
                 st.success("Content reprocessed successfully.")
             elif response.status_code == 400:
-                        if response.text == '{"detail":"請先使用generate_report生成報告"}':
-                            st.warning("Please generate a report first.")
-                        elif response.text == '{"detail":"請提供OpenAI或Azure的API金鑰"}':
-                            st.warning("Please provide OpenAI or Azure API key.")
-            else:
-                st.error(f"Error: {response.status_code} - {response.text}")
-                st.session_state.reprocess_result = None
+                if response.text == '{"detail":"請先使用generate_report生成報告"}':
+                    st.warning("Please generate a report first.")
+                elif response.text == '{"detail":"請提供OpenAI或Azure的API金鑰"}':
+                    st.warning("Please provide OpenAI or Azure API key.")
+                elif response.text == '{"detail":"請求格式錯誤，必須包含您想要修改的部分和修改內容"}':
+                    st.warning("Request format error. Please include the section you want to modify and the modified content.")
+                else:
+                    st.error(f"Error: {response.text}")
 
         time.sleep(3)
         st.session_state.reprocess_clicked = False

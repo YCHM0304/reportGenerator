@@ -537,8 +537,14 @@ class ReportGenerator:
             )
 
             try:
-                main_section = new_request.split("修改部分: ")[1].split("\n修改內容: ")[0]
-                mod_command = new_request.split("修改部分: ")[1].split("\n修改內容: ")[1]
+                try:
+                    main_section = new_request.split("修改部分: ")[1].split("\n修改內容: ")[0]
+                    mod_command = new_request.split("修改部分: ")[1].split("\n修改內容: ")[1]
+                except (IndexError, AttributeError) as e:
+                    raise HTTPException(
+                        status_code=400,
+                        detail="請求格式錯誤，必須包含您想要修改的部分和修改內容"
+                    ) from e
                 logger.debug(f"Reprocessing main section: {main_section}, with command: {mod_command}")
                 if main_section in self.final_result:
                     previous_context = self.final_result[main_section]
@@ -669,10 +675,10 @@ class ReportGenerator:
                     raise HTTPException(status_code=400, detail=f"未找到指定的主要部分: {main_section}")
             except HTTPException as http_ex:
                 logger.error(f"Error during content reprocessing: {http_ex}")
-                raise http_ex
+                raise
             except Exception as e:
                 logger.error(f"Error during content reprocessing: {str(e)}")
-                raise HTTPException(status_code=400, detail=str(e))
+                raise HTTPException(status_code=400, detail="不知道您想要修改哪一部分，請提供更多資訊")
 
         return {
             "original_content": "...",
