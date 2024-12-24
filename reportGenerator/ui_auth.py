@@ -488,6 +488,7 @@ def get_report(api_config):
         st.header("View and Edit report")
 
     headers = {"Authorization": f"Bearer {access_token}"} if access_token else {}
+
     response = requests.get(f"{API_BASE_URL}/get_report", headers=headers)
 
     if response.status_code == 200:
@@ -505,6 +506,7 @@ def get_report(api_config):
             with col2:
                 if st.session_state.edit_report_clicked:
                     if st.button("Cancel", use_container_width=True):
+
                         st.session_state.editing_sections = None
                         st.session_state.edit_report_clicked = False
                         st.rerun()
@@ -650,6 +652,7 @@ def reprocess_content(api_config):
     with col2:
         if st.button("Cancel", use_container_width=True, disabled=st.session_state.reprocess_clicked):
             st.session_state.reprocess_report_clicked = False
+            st.session_state.reprocess_result = None
             st.rerun()
 
     if reprocess_button:
@@ -754,8 +757,8 @@ def reprocess_content(api_config):
                 st.session_state.reprocess_clicked = False
             else:
                 st.error(f"Error saving changes: {save_response.status_code} - {save_response.text}")
-        time.sleep(3)
-        st.rerun()
+            time.sleep(3)
+            st.rerun()
 
 def generate_and_report_status(api_config):
     """
