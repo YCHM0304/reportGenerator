@@ -261,21 +261,36 @@ def generate_report(api_config):
         st.session_state.final_summary = True
     if 'main_sections_data' not in st.session_state:
         st.session_state.main_sections_data = {}
+    if 'recommended_main_sections' not in st.session_state:
+        st.session_state.recommended_main_sections = None
+    if 'num_main_sections' not in st.session_state:
+        st.session_state.num_main_sections = 1
 
-    # Report topic input with session state
+    # Callback functions for updating session state
+    def update_report_topic():
+        st.session_state.report_topic = st.session_state.report_topic_input
+
+    def update_links():
+        st.session_state.links_input = st.session_state.links_input_key
+
+    def update_final_summary():
+        st.session_state.final_summary = st.session_state.final_summary_toggle
+
+    def update_main_section(i):
+        main_section_key = f"main_section_{i}"
+        st.session_state.main_sections_data[main_section_key] = st.session_state[f"main_section_input_{i}"]
+
+    def update_subsections(i):
+        subsections_key = f"subsections_{i}"
+        st.session_state.main_sections_data[subsections_key] = st.session_state[f"subsections_input_{i}"]
+
+    # Report topic input with callback
     report_topic = st.text_input(
         "Enter the report topic",
         value=st.session_state.report_topic,
-        key="report_topic_input"
+        key="report_topic_input",
+        on_change=update_report_topic
     )
-    # Update session state when input changes
-    st.session_state.report_topic = report_topic
-
-    if 'recommended_main_sections' not in st.session_state:
-        st.session_state.recommended_main_sections = None
-
-    if 'num_main_sections' not in st.session_state:
-        st.session_state.num_main_sections = 1
 
     # Generate recommended sections buttons
     col1, col2 = st.columns(2)
@@ -290,7 +305,6 @@ def generate_report(api_config):
         if st.button("Reset Main Sections", disabled=st.session_state.generate_recommend_main_sections_clicked):
             st.session_state.recommended_main_sections = None
             st.session_state.num_main_sections = 1
-            # Clear the stored main sections data
             st.session_state.main_sections_data = {}
 
     if generate_recommend_main_sections_clicked:
@@ -316,7 +330,6 @@ def generate_report(api_config):
     with col2:
         if st.button("Remove Main Section") and st.session_state.num_main_sections > 1:
             st.session_state.num_main_sections -= 1
-            # Remove the last section's data from session state
             last_section_key = f"main_section_{st.session_state.num_main_sections}"
             last_subsections_key = f"subsections_{st.session_state.num_main_sections}"
             if last_section_key in st.session_state.main_sections_data:
@@ -352,65 +365,60 @@ def generate_report(api_config):
             main_section_key = f"main_section_{i}"
             default_main_section = ""
 
-            # Get value from recommended sections if available
             if st.session_state.recommended_main_sections and i < len(st.session_state.recommended_main_sections["主要部分"]):
                 default_main_section = st.session_state.recommended_main_sections["主要部分"][i]
-            # Otherwise get from session state if available
             elif main_section_key in st.session_state.main_sections_data:
                 default_main_section = st.session_state.main_sections_data[main_section_key]
 
             main_section = st.text_input(
                 f"Main Section {i+1}",
                 value=default_main_section,
-                key=f"main_section_input_{i}"
+                key=f"main_section_input_{i}",
+                on_change=update_main_section,
+                args=(i,)
             )
-            # Store in session state
-            st.session_state.main_sections_data[main_section_key] = main_section
 
         with col2:
             subsections_key = f"subsections_{i}"
             default_subsections = ""
 
-            # Get value from recommended sections if available
             if st.session_state.recommended_main_sections and i < len(st.session_state.recommended_main_sections["次要部分"]):
                 default_subsections = "\n".join(st.session_state.recommended_main_sections["次要部分"][i])
-            # Otherwise get from session state if available
             elif subsections_key in st.session_state.main_sections_data:
                 default_subsections = st.session_state.main_sections_data[subsections_key]
 
             subsections = st.text_area(
                 f"Subsections for Main Section {i+1} (one per line)",
                 value=default_subsections,
-                key=f"subsections_input_{i}"
+                key=f"subsections_input_{i}",
+                on_change=update_subsections,
+                args=(i,)
             )
-            # Store in session state
-            st.session_state.main_sections_data[subsections_key] = subsections
 
         if main_section and subsections:
             main_sections_dict[main_section] = subsections.split('\n')
 
     st.info("**Note**: *Some of the links may not be accessible due to the policy of the website.*")
-    default_links = st.session_state.links_input
-    # Links input with session state
+
+    # Links input with callback
     links = st.text_area(
         "Enter links (one per line)",
-        value=default_links,
-        key="links_input_key"
+        value=st.session_state.links_input,
+        key="links_input_key",
+        on_change=update_links
     )
-    st.session_state.links_input = links
 
     links_list = links.split('\n') if links else []
     links_list = [link for link in links_list if link]
 
-    # Final summary toggle with session state
+    # Final summary toggle with callback
     final_summary = st.toggle(
         "Generate final summary",
         value=st.session_state.final_summary,
         help="Generate an extra final summary based on the generated contents.",
-        key="final_summary_toggle"
+        key="final_summary_toggle",
+        on_change=update_final_summary
     )
-    # Update session state when toggle changes
-    st.session_state.final_summary = final_summary
 
     col1, col2 = st.columns(2)
     with col1:
@@ -422,9 +430,8 @@ def generate_report(api_config):
         )
     with col2:
         if st.button("Reset All", key="reset_all", use_container_width=True, disabled=st.session_state.generate_report_clicked or st.session_state.reprocess_clicked):
-            # Clear all stored form data
-            st.session_state.report_topic = ""
-            st.session_state.links_input = ""
+            st.session_state.report_topic = None
+            st.session_state.links_input = None
             st.session_state.final_summary = True
             st.session_state.main_sections_data = {}
             st.session_state.num_main_sections = 1
@@ -610,12 +617,17 @@ def get_report(api_config):
         st.error(f"Error: {response.status_code} - {response.text}")
 
 def reprocess_content(api_config):
-    """
-    創建重新處理內容界面，允許用戶輸入命令來重新處理之前生成的報告內容。
-    處理重新處理請求並顯示結果。提供選項保存修改後的內容。
-    保留按鈕鎖定功能。
-    """
     st.header("Reprocess Content")
+
+    # Initialize session state variables
+    if 'reprocess_command' not in st.session_state:
+        st.session_state.reprocess_command = ""
+    if 'more_info_from_links' not in st.session_state:
+        st.session_state.more_info_from_links = False
+    if 'additional_links' not in st.session_state:
+        st.session_state.additional_links = ""
+    if 'style_index' not in st.session_state:
+        st.session_state.style_index = 0
 
     access_token = get_access_token()
     if not access_token:
@@ -626,7 +638,45 @@ def reprocess_content(api_config):
         Only **one main section** of the content can be reprocessed at a time.
         Request more than one main section will result in an error.
     """)
-    command = st.text_input("Enter the command for reprocess", value=st.session_state.reprocess_command)
+
+    # Callback functions
+    def update_command():
+        st.session_state.reprocess_command = st.session_state.command_input
+
+    def update_more_info_toggle():
+        st.session_state.more_info_from_links = st.session_state.toggle_links
+
+    def update_additional_links():
+        st.session_state.additional_links = st.session_state.links_input
+
+    def reset_inputs():
+        # 清除 command
+        st.session_state.reprocess_command = ""
+        st.session_state.command_input = ""
+        # 關閉額外連結選項
+        st.session_state.more_info_from_links = False
+        st.session_state.toggle_links = False
+        st.session_state.style_index = 0
+        # 清除連結內容
+        st.session_state.additional_links = ""
+        if 'links_input' in st.session_state:
+            del st.session_state.links_input
+        # 清除其他相關狀態
+        if 'reprocess_result' in st.session_state:
+            del st.session_state.reprocess_result
+        if 'user_decision_required' in st.session_state:
+            del st.session_state.user_decision_required
+        if 'detail' in st.session_state:
+            del st.session_state.detail
+        reset_states()
+
+    # Command input with callback
+    command = st.text_input(
+        "Enter the command for reprocess",
+        value=st.session_state.reprocess_command,
+        key="command_input",
+        on_change=update_command
+    )
 
     # Style selection
     style_selection = style_selection_ui()
@@ -636,17 +686,42 @@ def reprocess_content(api_config):
             example_text = style_selection[4:]
             style_selection = None
 
-    more_info_from_links = st.toggle("Additional Information Source URLs", value=False, help='Add more URLs to expand the data sources for your report.')
-    if more_info_from_links:
-        links = st.text_area("Enter links (one per line)", key=more_info_from_links)
-        links_list = links.split('\n') if links else []
-        links_list = [link for link in links_list if link]
+    # Additional links toggle with callback
+    more_info_from_links = st.toggle(
+        "Additional Information Source URLs",
+        value=st.session_state.more_info_from_links,
+        key="toggle_links",
+        on_change=update_more_info_toggle,
+        help='Add more URLs to expand the data sources for your report.'
+    )
 
+    links_list = []
+    if more_info_from_links:
+        links = st.text_area(
+            "Enter links (one per line)",
+            value=st.session_state.additional_links,
+            key="links_input",
+            on_change=update_additional_links
+        )
+        if links:
+            links_list = [link for link in links.split('\n') if link]
+
+    # 按鈕區域
     col1, col2 = st.columns(2)
     with col1:
-        reprocess_button = st.button("Reprocess Report", disabled=st.session_state.reprocess_clicked or st.session_state.generate_report_clicked, use_container_width=True, type="primary")
+        reprocess_button = st.button(
+            "Reprocess Report",
+            disabled=st.session_state.reprocess_clicked or st.session_state.generate_report_clicked,
+            use_container_width=True,
+            type="primary"
+        )
     with col2:
-        reset_button = st.button("Reset", use_container_width=True, disabled=st.session_state.reprocess_clicked or st.session_state.generate_report_clicked)
+        reset_button = st.button(
+            "Reset",
+            on_click=reset_inputs,
+            use_container_width=True,
+            disabled=st.session_state.reprocess_clicked or st.session_state.generate_report_clicked
+        )
 
     _, col2 = st.columns(2)
     with col2:
@@ -846,6 +921,8 @@ def extract_text_from_file(uploaded_file):
 def style_selection_ui():
     col1, col2 = st.columns(2)
 
+    def update_style_index():
+        st.session_state.style_index = ["Original Style", "Predefined Style", "Custom Style", "AI-generated Style"].index(st.session_state.style_option_input)
     with col1:
         style_option = st.radio(
             "Select a style option",
@@ -856,6 +933,9 @@ def style_selection_ui():
                 "Describe your custom style.",
                 "Let AI generate a style based on the content."
             ],
+            key="style_option_input",
+            index=st.session_state.style_index,
+            on_change=update_style_index,
             help="Select the style option for the reprocessing command."
         )
 
