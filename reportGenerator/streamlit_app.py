@@ -1,6 +1,10 @@
 import streamlit as st
-import time
+import requests
 import uuid
+import json
+
+# API Endpoint (replace with your actual API endpoint)
+API_URL = "http://localhost:8000"
 
 # 添加自定義CSS以創建固定大小的聊天框
 st.markdown("""
@@ -33,60 +37,49 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
-class Agent:
-    def __init__(self):
-        self.history = []
-        self.sources = []
-        self.selected_sources = set()
-
-    def respond(self, message):
-        # 這裡可以接入實際的agent邏輯
-        response = f"Agent回應: {message}"
-        return response
-
-    def add_source(self, file=None, url=None):
-        try:
-            source_id = str(uuid.uuid4())
-            if file is not None:
-                self.sources.append({"id": source_id, "type": "file", "content": file.name, "selected": True})
-            if url and url.strip():
-                self.sources.append({"id": source_id, "type": "url", "content": url.strip(), "selected": True})
-            return True
-        except Exception as e:
-            return False
-
-    def toggle_source(self, source_id, selected):
-        for source in self.sources:
-            if source["id"] == source_id:
-                source["selected"] = selected
-                return True
-        return False
-
-    def remove_source(self, source_id):
-        self.sources = [s for s in self.sources if s["id"] != source_id]
-
 # 初始化會話狀態
-if 'agent' not in st.session_state:
-    st.session_state.agent = Agent()
+if 'session_id' not in st.session_state:
+    st.session_state.session_id = str(uuid.uuid4())
 if 'messages' not in st.session_state:
     st.session_state.messages = []
 if 'preview' not in st.session_state:
     st.session_state.preview = "這裡將顯示報告預覽..."
+if 'sources' not in st.session_state:
+    st.session_state.sources = []
+# 添加更新標誌
+if 'sources_updated' not in st.session_state:
+    st.session_state.sources_updated = False
 
 # 處理提交訊息
 def process_message():
     if st.session_state.user_input:
         user_message = st.session_state.user_input
 
-        # 加入對話歷史
+        # 加入對話歷史 (client-side for immediate display)
         st.session_state.messages.append({"role": "user", "content": user_message})
 
-        # 獲取Agent回應
-        response = st.session_state.agent.respond(user_message)
-        st.session_state.messages.append({"role": "agent", "content": response})
+        # 發送訊息到API
+        try:
+            response = requests.post(
+                f"{API_URL}/chat",
+                json={"message": user_message, "session_id": st.session_state.session_id},
+                headers={"session_id": st.session_state.session_id}
+            )
+            data = response.json()
 
-        # 更新預覽 (實際應用中可以基於對話內容生成報告)
-        st.session_state.preview = f"根據討論生成的報告預覽...\n\n{user_message}"
+            # Add agent response to messages
+            st.session_state.messages.append({"role": "agent", "content": data["response"]})
+
+            # Get updated preview
+            preview_response = requests.get(
+                f"{API_URL}/preview",
+                headers={"session_id": st.session_state.session_id}
+            )
+            preview_data = preview_response.json()
+            st.session_state.preview = preview_data["preview"]
+
+        except Exception as e:
+            st.error(f"Error communicating with API: {str(e)}")
 
         # 清空輸入框
         st.session_state.user_input = ""
@@ -96,19 +89,102 @@ def add_source():
     file = st.session_state.file_input if 'file_input' in st.session_state else None
     url = st.session_state.url_input if 'url_input' in st.session_state else ""
 
-    if file or url:
-        st.session_state.agent.add_source(file, url)
-        # 清空URL輸入框
-        st.session_state.url_input = ""
+    try:
+        if file:
+            files = {"file": (file.name, file, file.type)}
+            response = requests.post(
+                f"{API_URL}/sources",
+                files=files,
+                data={"source_type": "file", "content": file.name},
+                headers={"session_id": st.session_state.session_id}
+            )
+            if response.status_code == 200:
+                st.session_state.sources = fetch_sources()
+                # 設置更新標誌
+                st.session_state.sources_updated = True
+
+        elif url:
+            response = requests.post(
+                f"{API_URL}/sources",
+                data={"source_type": "url", "content": url},
+                headers={"session_id": st.session_state.session_id}
+            )
+            if response.status_code == 200:
+                st.session_state.sources = fetch_sources()
+                st.session_state.url_input = ""
+                # 設置更新標誌
+                st.session_state.sources_updated = True
+
+    except Exception as e:
+        st.error(f"Error adding source: {str(e)}")
+
+# 獲取資料來源
+def fetch_sources():
+    try:
+        response = requests.get(
+            f"{API_URL}/sources",
+            headers={"session_id": st.session_state.session_id}
+        )
+        if response.status_code == 200:
+            data = response.json()
+            sources = data.get("sources", [])
+            # 確保返回的數據格式正確
+            return [
+                {
+                    "id": source.get("id"),
+                    "type": source.get("type"),
+                    "content": source.get("content"),
+                    "selected": source.get("selected", True)
+                }
+                for source in sources
+            ]
+        return []
+    except Exception as e:
+        st.error(f"Error fetching sources: {str(e)}")
+        return []
 
 # 切換資料來源選擇狀態
 def toggle_source(source_id, selected):
-    st.session_state.agent.toggle_source(source_id, selected)
+    try:
+        response = requests.put(
+            f"{API_URL}/sources/{source_id}",
+            params={"selected": selected},
+            headers={"session_id": st.session_state.session_id}
+        )
+        if response.status_code == 200:
+            # Refresh sources and preview
+            st.session_state.sources = fetch_sources()
+
+            preview_response = requests.get(
+                f"{API_URL}/preview",
+                headers={"session_id": st.session_state.session_id}
+            )
+            preview_data = preview_response.json()
+            st.session_state.preview = preview_data["preview"]
+    except Exception as e:
+        st.error(f"Error toggling source: {str(e)}")
 
 # 移除資料來源
 def remove_source(source_id):
-    st.session_state.agent.remove_source(source_id)
-    st.rerun()
+    try:
+        response = requests.delete(
+            f"{API_URL}/sources/{source_id}",
+            headers={"session_id": st.session_state.session_id}
+        )
+        if response.status_code == 200:
+            # Refresh sources and preview
+            st.session_state.sources = fetch_sources()
+
+            preview_response = requests.get(
+                f"{API_URL}/preview",
+                headers={"session_id": st.session_state.session_id}
+            )
+            preview_data = preview_response.json()
+            st.session_state.preview = preview_data["preview"]
+
+        st.rerun()
+    except Exception as e:
+        st.error(f"Error removing source: {str(e)}")
 
 # 應用標題
 st.title("報告生成器")
@@ -124,15 +200,26 @@ with st.sidebar:
 
     st.subheader("已添加的資料來源")
 
-    if not st.session_state.agent.sources:
+    # 檢查更新標誌或需要初始載入
+    if st.session_state.sources_updated or not st.session_state.sources:
+        st.session_state.sources = fetch_sources()
+        # 重置更新標誌
+        st.session_state.sources_updated = False
+
+    if not st.session_state.sources:
         st.info("尚未添加任何資料來源")
     else:
-        for source in st.session_state.agent.sources:
+        for source in st.session_state.sources:
             cols = st.columns([1, 6, 1])
             with cols[0]:
-                st.checkbox("", value=source["selected"], key=f"source_{source['id']}",
-                            on_change=toggle_source,
-                            args=(source["id"], not source["selected"]))
+                st.checkbox(
+                    "選擇資料來源",
+                    value=source["selected"],
+                    key=f"source_{source['id']}",
+                    on_change=toggle_source,
+                    args=(source["id"], not source["selected"]),
+                    label_visibility="collapsed"
+                )
             with cols[1]:
                 st.text(f"{source['type']}: {source['content']}")
             with cols[2]:
@@ -145,9 +232,6 @@ col1, col2 = st.columns(2)
 
 with col1:
     st.subheader("與Agent討論報告內容")
-
-    # 添加空白行
-    st.markdown("<br>", unsafe_allow_html=True)
 
     # 創建固定大小的聊天容器
     chat_container = st.container()
@@ -171,4 +255,5 @@ with col1:
 
 with col2:
     st.subheader("報告預覽")
-    st.text_area("", value=st.session_state.preview, height=400, key="preview_area", disabled=True)
+    st.text_area("報告內容", value=st.session_state.preview, height=400, key="preview_area",
+                 disabled=True, label_visibility="collapsed")
