@@ -8,3 +8,6 @@ tests/*
 *.txt
 logs/*
 *.log
+
+uploads/*
+uploads/
